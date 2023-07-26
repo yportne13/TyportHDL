@@ -6,22 +6,37 @@ fn main() {
     let ret = unsafe { run_code::<i64, i64>(r#"
 fn fib(n : i64) -> i64 {
     if n == 0 {
-        return 0;
+        return 0
     } else {
         if n == 1 {
-            return 1;
+            return 1
         } else {
-            return fib(n - 1) + fib(n - 2);
-        };
-    };
+            return fib(n - 1) + fib(n - 2)
+        }
+    }
 }
 
 fn main() -> i64 {
-    return fib(11);
+    return fib(10)
 }
     "#, 11) };
-    println!("{:?}", ret);
-    println!("Hello, world!");
+    println!("{ret:?}");
+    let ret = unsafe { run_code::<i64, i64>(r#"
+fn testloop(n : i64) -> i64 {
+    let x = 0
+    let ret = 0
+    while(x != n) {
+        x = x + 1
+        ret = ret + x
+    }
+    return ret
+}
+
+fn main() -> i64 {
+    return testloop(100)
+}
+    "#, 11) };
+    println!("{ret:?}");
 }
 
 unsafe fn run_code<I, O>(code: &str, input: I) -> Result<O, String> {

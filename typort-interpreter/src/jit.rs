@@ -218,12 +218,49 @@ impl<'a> FunctionTranslator<'a> {
                 self.builder.def_var(*variable, new_value);
                 new_value
             },
+            Stmt::Assign(name, expr) => {
+                let new_value = self.translate_expr(expr);
+                let variable = self.variables.get(name.data).unwrap();
+                self.builder.def_var(*variable, new_value);
+                new_value
+            }
             Stmt::Return(expr) => {
                 let new_value = self.translate_expr(expr);
                 let variable = self.variables.get("&ret&").unwrap();
                 self.builder.def_var(*variable, new_value);
                 new_value
             },
+            Stmt::While(cond, block) => {
+                let header_block = self.builder.create_block();
+                let body_block = self.builder.create_block();
+                let exit_block = self.builder.create_block();
+
+                self.builder.ins().jump(header_block, &[]);
+                self.builder.switch_to_block(header_block);
+
+                let condition_value = self.translate_expr(cond);
+                self.builder
+                    .ins()
+                    .brif(condition_value, body_block, &[], exit_block, &[]);
+
+                self.builder.switch_to_block(body_block);
+                self.builder.seal_block(body_block);
+
+                for expr in block {
+                    self.translate_stmt(expr);
+                }
+                self.builder.ins().jump(header_block, &[]);
+
+                self.builder.switch_to_block(exit_block);
+
+                // We've reached the bottom of the loop, so there will be no
+                // more backedges to the header to exits to the bottom.
+                self.builder.seal_block(header_block);
+                self.builder.seal_block(exit_block);
+
+                // Just return 0 for now.
+                self.builder.ins().iconst(self.int, 0)
+            }
         }
     }
     fn translate_expr(&mut self, expr: Expression<'_>) -> Value {

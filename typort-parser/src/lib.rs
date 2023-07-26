@@ -114,7 +114,10 @@ pub mod simple_example {
     pub enum Stmt<'a> {
         Expr(Expression<'a>),
         Let(Span<&'a str>, Expression<'a>),
+        Assign(Span<&'a str>, Expression<'a>),
         Return(Expression<'a>),
+        //For(Span<&'a str>, Expression<'a>, Expression<'a>, Vec<Stmt<'a>>),
+        While(Expression<'a>, Vec<Stmt<'a>>),
     }
 
     parser! {
@@ -139,13 +142,19 @@ pub mod simple_example {
 
         stmt: Stmt<'a> = stmt_let
             | stmt_return
+            | stmt_while
+            | stmt_assign
             | stmt_expr
 
-        stmt_expr: Stmt<'a> = expr -> (Stmt::Expr) << ";"
+        stmt_expr: Stmt<'a> = expr -> (Stmt::Expr)
 
-        stmt_let: Stmt<'a> = (("let" >> name << "=") * expr << ";") -> (|(a, b)| Stmt::Let(a, b))
+        stmt_let: Stmt<'a> = (("let" >> name << "=") * expr) -> (|(a, b)| Stmt::Let(a, b))
 
-        stmt_return: Stmt<'a> = "return" >> expr -> (Stmt::Return) << ";"
+        stmt_assign: Stmt<'a> = ((name << "=") * expr) -> (|(a, b)| Stmt::Assign(a, b))
+
+        stmt_return: Stmt<'a> = "return" >> expr -> (Stmt::Return)
+
+        stmt_while: Stmt<'a> = ("while" >> ("(" >> expr << ")") * block) -> (|(cond, b)| Stmt::While(cond, b))
 
         expr: Expression<'a> = expr_binary
 
@@ -222,14 +231,14 @@ fn main() {
         let f = file().run(r#"
 fn recursive_fib(n : i64) -> i64 {
     if n == 0 {
-        return 0;
+        return 0
     } else {
         if n == 1 {
-            return 1;
+            return 1
         } else {
-            return recursive_fib(n - 1) + recursive_fib(n - 2);
-        };
-    };
+            return recursive_fib(n - 1) + recursive_fib(n - 2)
+        }
+    }
 }
         "#);
         println!("{:#?}", f);
@@ -248,5 +257,17 @@ fn recursive_fib(n : i64) -> i64 {
         //println!("{:#?}", f);
         //let f = r#fn().run(r#"fn recursive_fib(n: i64) -> i64 {}"#);
         //println!("{:#?}", f);
+        let f = file().run(r#"
+fn testloop(n : i64) -> i64 {
+    let x = 0
+    let ret = 0
+    while(x != n) {
+        x = x + 1
+        ret = ret + x
+    }
+    return ret
+}
+        "#);
+        println!("{:#?}", f);
     }
 }
