@@ -1,6 +1,21 @@
+mod hir;
+mod mir;
 mod jit;
+use hir::parse_to_hir;
+use mir::hir_to_mir;
 use typort_parser::simple_example::*;
 use core::mem;
+
+#[derive(Debug, Clone)]
+pub struct Span<T> {
+    pub data: T,
+}
+
+impl<T> From<typort_parser::simple_example::Span<T>> for Span<T> {
+    fn from(value: typort_parser::simple_example::Span<T>) -> Self {
+        Span { data: value.data }
+    }
+}
 
 fn main() {
     let ret = unsafe { run_code::<i64, i64>(r#"
@@ -41,9 +56,11 @@ fn main() -> i64 {
 
 unsafe fn run_code<I, O>(code: &str, input: I) -> Result<O, String> {
     let mut jit = jit::JIT::default();
-    let code = file().run(code).ok_or("parse error")?;
+    let ast = file().run(code).ok_or("parse error")?;
+    let hir = parse_to_hir(ast);
+    let mir = hir_to_mir(hir);
     // Pass the string to the JIT, and it returns a raw pointer to machine code.
-    let code_ptr = jit.compile(code)?;
+    let code_ptr = jit.compile(mir)?;
     // Cast the raw pointer to a typed function pointer. This is unsafe, because
     // this is the critical point where you have to trust that the generated code
     // is safe to be called.

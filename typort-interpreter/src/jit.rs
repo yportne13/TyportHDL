@@ -1,4 +1,4 @@
-use typort_parser::simple_example::*;
+use crate::{mir::*, Span};
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, Linkage, Module, FuncId};
@@ -126,7 +126,7 @@ impl JIT {
     // Translate from toy-language AST nodes into Cranelift IR.
     fn translate(
         &mut self,
-        params: Vec<Param<'_>>,
+        params: Vec<(Span<&'_ str>, Span<&'_ str>)>,
         stmts: Vec<Stmt<'_>>,
     ) -> Result<(), String> {
         let the_return = "&ret&";
@@ -463,7 +463,7 @@ impl<'a> FunctionTranslator<'a> {
 fn declare_variables(
     int: types::Type,
     builder: &mut FunctionBuilder,
-    params: &[Param<'_>],
+    params: &[(Span<&'_ str>, Span<&'_ str>)],
     the_return: &str,
     stmts: &[Stmt],
     entry_block: Block,

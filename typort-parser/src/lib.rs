@@ -7,6 +7,8 @@ mod types;
 pub mod simple_example {
     use macro_parser_combinator::*;
 
+    pub use macro_parser_combinator::Span;
+
     pub fn name<'a>() -> Parser!(Span<&'a str>) {
         fn f(input: &str, loc: Location) -> (Option<Span<&str>>, &str, Location) {
             let mut a = input.bytes();
@@ -100,12 +102,9 @@ pub mod simple_example {
     }
 
     #[derive(Debug, Clone)]
-    pub struct Param<'a>(pub Span<&'a str>, pub Span<&'a str>);
-
-    #[derive(Debug, Clone)]
     pub struct Func<'a> {
         pub name: Span<&'a str>,
-        pub params: Vec<Param<'a>>,
+        pub params: Vec<(Span<&'a str>, Span<&'a str>)>,
         pub return_type: Option<Span<&'a str>>,
         pub block: Vec<Stmt<'a>>,
     }
@@ -132,9 +131,9 @@ pub mod simple_example {
                 block,
             })
 
-        param_list: Vec<Param<'a>> = "(" >> {param(",")} << [","] << ")"
+        param_list: Vec<(Span<&'a str>, Span<&'a str>)> = "(" >> {param(",")} << [","] << ")"
 
-        param: Param<'a> = ((name << ":") * type_expr) -> (|(a, b)| Param(a, b))
+        param: (Span<&'a str>, Span<&'a str>) = (name << ":") * type_expr
 
         type_expr: Span<&'a str> = name
 
