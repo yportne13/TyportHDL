@@ -12,6 +12,17 @@ pub struct Span<T> {
     pub data: T,
 }
 
+impl<T> Span<T> {
+    pub fn map<F, O>(self, f: F) -> Span<O>
+    where
+        F: Fn(T) -> O
+    {
+        Span {
+            data: f(self.data)
+        }
+    }
+}
+
 impl<T> From<typort_parser::simple_example::Span<T>> for Span<T> {
     fn from(value: typort_parser::simple_example::Span<T>) -> Self {
         Span { data: value.data }

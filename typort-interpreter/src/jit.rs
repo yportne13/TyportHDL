@@ -126,10 +126,10 @@ impl JIT {
     // Translate from toy-language AST nodes into Cranelift IR.
     fn translate(
         &mut self,
-        params: Vec<(Span<&'_ str>, Span<&'_ str>)>,
+        params: Vec<(Span<usize>, Span<&'_ str>)>,
         stmts: Vec<Stmt<'_>>,
     ) -> Result<(), String> {
-        let the_return = "&ret&";
+        let the_return = 114514;
 
         // Our toy language currently only supports I64 values, though Cranelift
         // supports other types.
@@ -166,7 +166,7 @@ impl JIT {
         // The toy language allows variables to be declared implicitly.
         // Walk the AST and declare all implicitly-declared variables.
         let variables =
-            declare_variables(int, &mut builder, &params, &the_return, &stmts, entry_block);
+            declare_variables(int, &mut builder, &params, the_return, &stmts, entry_block);
 
         // Now translate the statements of the function body.
         let mut trans = FunctionTranslator {
@@ -182,7 +182,7 @@ impl JIT {
         // Set up the return variable of the function. Above, we declared a
         // variable to hold the return value. Here, we just do a use of that
         // variable.
-        let return_variable = trans.variables.get(the_return).unwrap();
+        let return_variable = trans.variables.get(&the_return).unwrap();
         let return_value = trans.builder.use_var(*return_variable);
 
         // Emit the return instruction.
@@ -199,7 +199,7 @@ impl JIT {
 struct FunctionTranslator<'a> {
     int: types::Type,
     builder: FunctionBuilder<'a>,
-    variables: HashMap<String, Variable>,
+    variables: HashMap<usize, Variable>,
     module: &'a mut JITModule,
 }
 
@@ -214,19 +214,19 @@ impl<'a> FunctionTranslator<'a> {
                 // variables can have multiple definitions. Cranelift will
                 // convert them into SSA form for itself automatically.
                 let new_value = self.translate_expr(expr);
-                let variable = self.variables.get(name.data).unwrap();
+                let variable = self.variables.get(&name.data).unwrap();
                 self.builder.def_var(*variable, new_value);
                 new_value
             },
             Stmt::Assign(name, expr) => {
                 let new_value = self.translate_expr(expr);
-                let variable = self.variables.get(name.data).unwrap();
+                let variable = self.variables.get(&name.data).unwrap();
                 self.builder.def_var(*variable, new_value);
                 new_value
             }
             Stmt::Return(expr) => {
                 let new_value = self.translate_expr(expr);
-                let variable = self.variables.get("&ret&").unwrap();
+                let variable = self.variables.get(&114514).unwrap();
                 self.builder.def_var(*variable, new_value);
                 new_value
             },
@@ -268,7 +268,7 @@ impl<'a> FunctionTranslator<'a> {
             Expression::Int(imm) => self.builder.ins().iconst(self.int, imm.data),
             Expression::Bool(imm) => self.builder.ins().iconst(self.int, imm as i64),
             Expression::Name(name) => {
-                let variable = self.variables.get(name.data).expect("variable not defined");
+                let variable = self.variables.get(&name.data).expect("variable not defined");
                 self.builder.use_var(*variable)
             },
             Expression::Add(lhs, rhs) => {
@@ -463,11 +463,11 @@ impl<'a> FunctionTranslator<'a> {
 fn declare_variables(
     int: types::Type,
     builder: &mut FunctionBuilder,
-    params: &[(Span<&'_ str>, Span<&'_ str>)],
-    the_return: &str,
+    params: &[(Span<usize>, Span<&'_ str>)],
+    the_return: usize,
     stmts: &[Stmt],
     entry_block: Block,
-) -> HashMap<String, Variable> {
+) -> HashMap<usize, Variable> {
     let mut variables = HashMap::new();
     let mut index = 0;
 
@@ -493,7 +493,7 @@ fn declare_variables(
 fn declare_variables_in_stmt(
     int: types::Type,
     builder: &mut FunctionBuilder,
-    variables: &mut HashMap<String, Variable>,
+    variables: &mut HashMap<usize, Variable>,
     index: &mut usize,
     expr: &Stmt<'_>,
 ) {
@@ -524,12 +524,12 @@ fn declare_variables_in_stmt(
 fn declare_variable(
     int: types::Type,
     builder: &mut FunctionBuilder,
-    variables: &mut HashMap<String, Variable>,
+    variables: &mut HashMap<usize, Variable>,
     index: &mut usize,
-    name: &str,
+    name: usize,
 ) -> Variable {
     let var = Variable::new(*index);
-    if !variables.contains_key(name) {
+    if !variables.contains_key(&name) {
         variables.insert(name.into(), var);
         builder.declare_var(var, int);
         *index += 1;

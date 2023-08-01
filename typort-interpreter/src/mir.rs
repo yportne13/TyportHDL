@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use crate::Span;
 
 #[derive(Debug, Clone)]
 pub enum Expression<'a> {
     Int(Span<i64>),
     Bool(bool),
-    Name(Span<&'a str>),
+    Name(Span<usize>),
     Add(Box<Expression<'a>>, Box<Expression<'a>>),
     Sub(Box<Expression<'a>>, Box<Expression<'a>>),
     Mul(Box<Expression<'a>>, Box<Expression<'a>>),
@@ -15,46 +17,10 @@ pub enum Expression<'a> {
     If(Box<Expression<'a>>, Vec<Stmt<'a>>, Option<Vec<Stmt<'a>>>),
 }
 
-impl<'a> From<crate::hir::Expression<'a>> for Expression<'a> {
-    fn from(value: crate::hir::Expression<'a>) -> Self {
-        match value {
-            crate::hir::Expression::Int(x) => Expression::Int(x),
-            crate::hir::Expression::Bool(x) => Expression::Bool(x),
-            crate::hir::Expression::Name(x) => Expression::Name(x),
-            crate::hir::Expression::Add(a, b) => {
-                Expression::Add(Box::new((*a).into()), Box::new((*b).into()))
-            }
-            crate::hir::Expression::Sub(a, b) => {
-                Expression::Sub(Box::new((*a).into()), Box::new((*b).into()))
-            }
-            crate::hir::Expression::Mul(a, b) => {
-                Expression::Mul(Box::new((*a).into()), Box::new((*b).into()))
-            }
-            crate::hir::Expression::Div(a, b) => {
-                Expression::Div(Box::new((*a).into()), Box::new((*b).into()))
-            }
-            crate::hir::Expression::Eq(a, b) => {
-                Expression::Eq(Box::new((*a).into()), Box::new((*b).into()))
-            }
-            crate::hir::Expression::Neq(a, b) => {
-                Expression::Neq(Box::new((*a).into()), Box::new((*b).into()))
-            }
-            crate::hir::Expression::Call(a, b) => {
-                Expression::Call(a, b.into_iter().map(|x| x.into()).collect())
-            }
-            crate::hir::Expression::If(c, b, e) => Expression::If(
-                Box::new((*c).into()),
-                b.into_iter().map(|x| x.into()).collect(),
-                e.map(|x| x.into_iter().map(|y| y.into()).collect()),
-            ),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Func<'a> {
     pub name: Span<&'a str>,
-    pub params: Vec<(Span<&'a str>, Span<&'a str>)>,
+    pub params: Vec<(Span<usize>, Span<&'a str>)>,
     pub return_type: Option<Span<&'a str>>,
     pub block: Vec<Stmt<'a>>,
 }
@@ -62,38 +28,104 @@ pub struct Func<'a> {
 #[derive(Debug, Clone)]
 pub enum Stmt<'a> {
     Expr(Expression<'a>),
-    Let(Span<&'a str>, Expression<'a>),
-    Assign(Span<&'a str>, Expression<'a>),
+    Let(Span<usize>, Expression<'a>),
+    Assign(Span<usize>, Expression<'a>),
     Return(Expression<'a>),
     //For(Span<&'a str>, Expression<'a>, Expression<'a>, Vec<Stmt<'a>>),
     While(Expression<'a>, Vec<Stmt<'a>>),
 }
 
-impl<'a> From<crate::hir::Stmt<'a>> for Stmt<'a> {
-    fn from(value: crate::hir::Stmt<'a>) -> Self {
-        match value {
-            crate::hir::Stmt::Expr(e) => Stmt::Expr(e.into()),
-            crate::hir::Stmt::Let(a, b) => Stmt::Let(a, b.into()),
-            crate::hir::Stmt::Assign(a, b) => Stmt::Assign(a, b.into()),
-            crate::hir::Stmt::Return(e) => Stmt::Return(e.into()),
+pub fn hir_to_mir(from: Vec<crate::hir::Func<'_>>) -> Vec<Func<'_>> {
+    from.into_iter()
+        .map(|x| {
+            let mut converter = MirConverter::new();
+            converter.convert(x)
+        })
+        .collect()
+}
+
+struct MirConverter {
+    rename: HashMap<String, usize>,
+    rename_idx: usize,
+}
+
+impl MirConverter {
+    pub fn new() -> Self {
+        Self {
+            rename: Default::default(),
+            rename_idx: 0,
+        }
+    }
+    pub fn convert<'b>(&'_ mut self, from: crate::hir::Func<'b>) -> Func<'b> {
+        for p in from.params.iter() {
+            self.rename.insert(p.0.data.to_string(), self.rename_idx);
+            self.rename_idx += 1;
+        }
+        Func {
+            name: from.name,
+            params: from
+                .params
+                .into_iter()
+                .enumerate()
+                .map(|(idx, x)| (x.0.map(|_| idx), x.1))
+                .collect(),
+            return_type: from.return_type,
+            block: from.block.into_iter().map(|x| self.convert_stmt(x)).collect(),
+        }
+    }
+    fn convert_stmt<'b>(&'_ mut self, x: crate::hir::Stmt<'b>) -> Stmt<'b> {
+        match x {
+            crate::hir::Stmt::Expr(e) => Stmt::Expr(self.convert_expr(e)),
+            crate::hir::Stmt::Let(a, b) => {
+                self.rename.insert(a.data.to_string(), self.rename_idx);
+                let ret = Stmt::Let(a.map(|_| self.rename_idx), self.convert_expr(b));
+                self.rename_idx += 1;
+                ret
+            },
+            crate::hir::Stmt::Assign(a, b) => {
+                let idx = self.rename.get(a.data).unwrap();
+                Stmt::Assign(a.map(|_| *idx), self.convert_expr(b))
+            },
+            crate::hir::Stmt::Return(e) => Stmt::Return(self.convert_expr(e)),
             crate::hir::Stmt::While(e, v) => {
-                Stmt::While(e.into(), v.into_iter().map(|x| x.into()).collect())
+                Stmt::While(self.convert_expr(e), v.into_iter().map(|x| self.convert_stmt(x)).collect())
             }
         }
     }
-}
-
-pub fn hir_to_mir(from: Vec<crate::hir::Func<'_>>) -> Vec<Func<'_>> {
-    from.into_iter()
-        .map(|x| Func {
-            name: x.name,
-            params: x
-                .params
-                .into_iter()
-                .map(|x| (x.0, x.1))
-                .collect(),
-            return_type: x.return_type,
-            block: x.block.into_iter().map(|x| x.into()).collect(),
-        })
-        .collect()
+    fn convert_expr<'b>(&'_ mut self, x: crate::hir::Expression<'b>) -> Expression<'b> {
+        match x {
+            crate::hir::Expression::Int(x) => Expression::Int(x),
+            crate::hir::Expression::Bool(x) => Expression::Bool(x),
+            crate::hir::Expression::Name(x) => {
+                let idx = self.rename.get(x.data).unwrap();
+                Expression::Name(x.map(|_| *idx))
+            },
+            crate::hir::Expression::Add(a, b) => {
+                Expression::Add(Box::new(self.convert_expr(*a)), Box::new(self.convert_expr(*b)))
+            }
+            crate::hir::Expression::Sub(a, b) => {
+                Expression::Sub(Box::new(self.convert_expr(*a)), Box::new(self.convert_expr(*b)))
+            }
+            crate::hir::Expression::Mul(a, b) => {
+                Expression::Mul(Box::new(self.convert_expr(*a)), Box::new(self.convert_expr(*b)))
+            }
+            crate::hir::Expression::Div(a, b) => {
+                Expression::Div(Box::new(self.convert_expr(*a)), Box::new(self.convert_expr(*b)))
+            }
+            crate::hir::Expression::Eq(a, b) => {
+                Expression::Eq(Box::new(self.convert_expr(*a)), Box::new(self.convert_expr(*b)))
+            }
+            crate::hir::Expression::Neq(a, b) => {
+                Expression::Neq(Box::new(self.convert_expr(*a)), Box::new(self.convert_expr(*b)))
+            }
+            crate::hir::Expression::Call(a, b) => {
+                Expression::Call(a, b.into_iter().map(|x| self.convert_expr(x)).collect())
+            }
+            crate::hir::Expression::If(c, b, e) => Expression::If(
+                Box::new(self.convert_expr(*c)),
+                b.into_iter().map(|x| self.convert_stmt(x)).collect(),
+                e.map(|x| x.into_iter().map(|y| self.convert_stmt(y)).collect()),
+            ),
+        }
+    }
 }

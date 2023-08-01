@@ -10,7 +10,7 @@ pub enum Value {
 }
 
 pub struct Interpreter<'a> {
-    values: Vec<HashMap<String, Value>>,
+    values: Vec<Vec<Value>>,
     funcs: HashMap<String, Func<'a>>,
 }
 
@@ -39,9 +39,9 @@ impl<'a> Interpreter<'a> {
     pub fn translate_stmt(&mut self, stmt: &'_ Stmt<'_>) -> Value {
         match stmt {
             Stmt::Expr(e) => self.translate_expr(e),
-            Stmt::Let(name, e) => {
+            Stmt::Let(_, e) => {
                 let value = self.translate_expr(e);
-                self.values.last_mut().unwrap().insert(name.data.to_string(), value);
+                self.values.last_mut().unwrap().push(value);
                 Value::Unit
             },
             Stmt::Assign(name, e) => {
@@ -95,10 +95,10 @@ impl<'a> Interpreter<'a> {
                     Value::Unit
                 }else {
                     let func = self.funcs.get(name.data).unwrap().clone();
-                    let mut next_value = HashMap::new();
-                    for ((name, _), e) in func.params.iter().zip(p.iter()) {
+                    let mut next_value = Vec::new();
+                    for ((_, _), e) in func.params.iter().zip(p.iter()) {
                         let value = self.translate_expr(e);
-                        next_value.insert(name.data.to_string(), value);
+                        next_value.push(value);
                     }
                     self.values.push(next_value);
                     let ret = self.translate_block(&func.block);
