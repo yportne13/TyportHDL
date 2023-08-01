@@ -58,6 +58,8 @@ pub mod simple_example {
                 } else {
                     return (None, input, loc);
                 }
+            }else {
+                return (None, input, loc);
             }
             loop {
                 match a.next() {
@@ -115,7 +117,7 @@ pub mod simple_example {
         Let(Span<&'a str>, Expression<'a>),
         Assign(Span<&'a str>, Expression<'a>),
         Return(Expression<'a>),
-        //For(Span<&'a str>, Expression<'a>, Expression<'a>, Vec<Stmt<'a>>),
+        For(Span<&'a str>, Expression<'a>, Expression<'a>, Vec<Stmt<'a>>),
         While(Expression<'a>, Vec<Stmt<'a>>),
     }
 
@@ -142,6 +144,7 @@ pub mod simple_example {
         stmt: Stmt<'a> = stmt_let
             | stmt_return
             | stmt_while
+            | stmt_for
             | stmt_assign
             | stmt_expr
 
@@ -152,6 +155,9 @@ pub mod simple_example {
         stmt_assign: Stmt<'a> = ((name << "=") * expr) -> (|(a, b)| Stmt::Assign(a, b))
 
         stmt_return: Stmt<'a> = "return" >> expr -> (Stmt::Return)
+
+        stmt_for: Stmt<'a> = ("for" >> ("(" >> (name << "<-") * (expr << "until") * (expr << ")")) * block)
+            -> (|(((n, from), to), b)| Stmt::For(n, from, to, b))
 
         stmt_while: Stmt<'a> = ("while" >> ("(" >> expr << ")") * block) -> (|(cond, b)| Stmt::While(cond, b))
 
@@ -215,6 +221,9 @@ pub mod simple_example {
 
         arg: Expression<'a> = expr
 
+
+        test_for: ((Span<&'a str>, Expression<'a>), Expression<'a>) = "for" >> ("(" >> (name << "<-") * (expr << "until") * (expr << ")"))
+        //test_for: Span<&'a str> = "for" >> "(" >> (name << "<-")
     }
 
     #[test]
@@ -267,6 +276,16 @@ fn testloop(n : i64) -> i64 {
     return ret
 }
         "#);
+        println!("{:#?}", f);
+        let f = file().run(r#"
+fn testloop(n : i64) -> i64 {
+    let ret = 0
+    for(x <- 0 until n) {
+        ret = ret + x
+    }
+    return ret
+}
+        "#);//TODO:when remove last }, infinited loop
         println!("{:#?}", f);
     }
 }

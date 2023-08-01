@@ -448,7 +448,7 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.inst_results(call)[0]
     }
 
-    fn translate_global_data_addr(&mut self, name: String) -> Value {
+    /*fn translate_global_data_addr(&mut self, name: String) -> Value {
         let sym = self
             .module
             .declare_data(&name, Linkage::Export, true, false)
@@ -457,7 +457,7 @@ impl<'a> FunctionTranslator<'a> {
 
         let pointer = self.module.target_config().pointer_type();
         self.builder.ins().symbol_value(pointer, local_id)
-    }
+    }*/
 }
 
 fn declare_variables(

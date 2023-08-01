@@ -1,0 +1,14 @@
+
+fn testloop(n : i64) -> i64 {
+    let x = 0
+    let ret = 0
+    while(x != n) {
+        x = x + 1
+        ret = ret + x
+    }
+    return ret
+}
+
+fn main() -> i64 {
+    return testloop(100)
+}

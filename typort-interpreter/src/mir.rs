@@ -18,9 +18,9 @@ pub enum Expression<'a> {
 impl<'a> From<crate::hir::Expression<'a>> for Expression<'a> {
     fn from(value: crate::hir::Expression<'a>) -> Self {
         match value {
-            crate::hir::Expression::Int(x) => Expression::Int(x.into()),
+            crate::hir::Expression::Int(x) => Expression::Int(x),
             crate::hir::Expression::Bool(x) => Expression::Bool(x),
-            crate::hir::Expression::Name(x) => Expression::Name(x.into()),
+            crate::hir::Expression::Name(x) => Expression::Name(x),
             crate::hir::Expression::Add(a, b) => {
                 Expression::Add(Box::new((*a).into()), Box::new((*b).into()))
             }
@@ -40,7 +40,7 @@ impl<'a> From<crate::hir::Expression<'a>> for Expression<'a> {
                 Expression::Neq(Box::new((*a).into()), Box::new((*b).into()))
             }
             crate::hir::Expression::Call(a, b) => {
-                Expression::Call(a.into(), b.into_iter().map(|x| x.into()).collect())
+                Expression::Call(a, b.into_iter().map(|x| x.into()).collect())
             }
             crate::hir::Expression::If(c, b, e) => Expression::If(
                 Box::new((*c).into()),
@@ -73,8 +73,8 @@ impl<'a> From<crate::hir::Stmt<'a>> for Stmt<'a> {
     fn from(value: crate::hir::Stmt<'a>) -> Self {
         match value {
             crate::hir::Stmt::Expr(e) => Stmt::Expr(e.into()),
-            crate::hir::Stmt::Let(a, b) => Stmt::Let(a.into(), b.into()),
-            crate::hir::Stmt::Assign(a, b) => Stmt::Assign(a.into(), b.into()),
+            crate::hir::Stmt::Let(a, b) => Stmt::Let(a, b.into()),
+            crate::hir::Stmt::Assign(a, b) => Stmt::Assign(a, b.into()),
             crate::hir::Stmt::Return(e) => Stmt::Return(e.into()),
             crate::hir::Stmt::While(e, v) => {
                 Stmt::While(e.into(), v.into_iter().map(|x| x.into()).collect())
@@ -86,13 +86,13 @@ impl<'a> From<crate::hir::Stmt<'a>> for Stmt<'a> {
 pub fn hir_to_mir(from: Vec<crate::hir::Func<'_>>) -> Vec<Func<'_>> {
     from.into_iter()
         .map(|x| Func {
-            name: x.name.into(),
+            name: x.name,
             params: x
                 .params
                 .into_iter()
-                .map(|x| (x.0.into(), x.1.into()))
+                .map(|x| (x.0, x.1))
                 .collect(),
-            return_type: x.return_type.map(|x| x.into()),
+            return_type: x.return_type,
             block: x.block.into_iter().map(|x| x.into()).collect(),
         })
         .collect()

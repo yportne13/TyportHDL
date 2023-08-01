@@ -44,8 +44,8 @@ impl<'a> From<typort_parser::simple_example::Expression<'a>> for Expression<'a> 
             }
             typort_parser::simple_example::Expression::If(c, b, e) => Expression::If(
                 Box::new((*c).into()),
-                b.into_iter().map(|x| x.into()).collect(),
-                e.map(|x| x.into_iter().map(|y| y.into()).collect()),
+                b.into_iter().flat_map(convert_stmt).collect(),
+                e.map(|x| x.into_iter().flat_map(convert_stmt).collect()),
             ),
         }
     }
@@ -69,17 +69,25 @@ pub enum Stmt<'a> {
     While(Expression<'a>, Vec<Stmt<'a>>),
 }
 
-impl<'a> From<typort_parser::simple_example::Stmt<'a>> for Stmt<'a> {
-    fn from(value: typort_parser::simple_example::Stmt<'a>) -> Self {
-        match value {
-            typort_parser::simple_example::Stmt::Expr(e) => Stmt::Expr(e.into()),
-            typort_parser::simple_example::Stmt::Let(a, b) => Stmt::Let(a.into(), b.into()),
-            typort_parser::simple_example::Stmt::Assign(a, b) => Stmt::Assign(a.into(), b.into()),
-            typort_parser::simple_example::Stmt::Return(e) => Stmt::Return(e.into()),
-            typort_parser::simple_example::Stmt::While(e, v) => {
-                Stmt::While(e.into(), v.into_iter().map(|x| x.into()).collect())
-            }
+fn convert_stmt(value: typort_parser::simple_example::Stmt<'_>) -> Vec<Stmt<'_>> {
+    match value {
+        typort_parser::simple_example::Stmt::Expr(e) => vec![Stmt::Expr(e.into())],
+        typort_parser::simple_example::Stmt::Let(a, b) => vec![Stmt::Let(a.into(), b.into())],
+        typort_parser::simple_example::Stmt::Assign(a, b) => vec![Stmt::Assign(a.into(), b.into())],
+        typort_parser::simple_example::Stmt::Return(e) => vec![Stmt::Return(e.into())],
+        typort_parser::simple_example::Stmt::While(e, v) => {
+            vec![Stmt::While(e.into(), v.into_iter().flat_map(convert_stmt).collect())]
         }
+        typort_parser::simple_example::Stmt::For(v, from, to, b) => vec![
+            Stmt::Let(v.clone().into(), from.into()),
+            Stmt::While(
+                Expression::Neq(Box::new(Expression::Name(v.clone().into())), Box::new(to.into())),
+                [
+                    b.into_iter().flat_map(convert_stmt).collect(),
+                    vec![Stmt::Assign(v.clone().into(), Expression::Add(Box::new(Expression::Name(v.into())), Box::new(Expression::Int(Span{data: 1}))))]
+                ].concat()
+            )
+        ],
     }
 }
 
@@ -93,7 +101,7 @@ pub fn parse_to_hir(from: Vec<typort_parser::simple_example::Func<'_>>) -> Vec<F
                 .map(|x| (x.0.into(), x.1.into()))
                 .collect(),
             return_type: x.return_type.map(|x| x.into()),
-            block: x.block.into_iter().map(|x| x.into()).collect(),
+            block: x.block.into_iter().flat_map(convert_stmt).collect(),
         })
         .collect()
 }
