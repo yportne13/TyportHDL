@@ -6,11 +6,26 @@ use crate::mir::*;
 pub enum Value {
     Int(i64),
     Bool(bool),
+    HeapId(usize),
     Unit,
 }
 
+#[derive(Clone, Debug)]
+pub enum HeapValue {
+    Vec(Vec<Value>),
+    String(String),
+    Class(Class),
+}
+
+#[derive(Clone, Debug)]
+pub struct Class {
+    values: Vec<Value>,
+
+}
+
 pub struct Interpreter<'a> {
-    values: Vec<Vec<Value>>,
+    stack: Vec<Vec<Value>>,
+    heap: HashMap<usize, HeapValue>,
     funcs: HashMap<String, Func<'a>>,
 }
 
@@ -21,8 +36,9 @@ impl<'a> Interpreter<'a> {
             funcs_hash.insert(f.name.data.to_owned(), f);
         }
         Self {
-            values: Default::default(),
-            funcs: funcs_hash
+            stack: vec![vec![]],
+            heap: Default::default(),
+            funcs: funcs_hash,
         }
     }
     pub fn run(&mut self) -> Value {
@@ -41,11 +57,11 @@ impl<'a> Interpreter<'a> {
             Stmt::Expr(e) => self.translate_expr(e),
             Stmt::Let(_, e) => {
                 let value = self.translate_expr(e);
-                self.values.last_mut().unwrap().push(value);
+                self.stack.last_mut().unwrap().push(value);
                 Value::Unit
             },
             Stmt::Assign(name, e) => {
-                *self.values.last_mut().unwrap().get_mut(name.data).unwrap() = self.translate_expr(e);
+                *self.stack.last_mut().unwrap().get_mut(name.data).unwrap() = self.translate_expr(e);
                 Value::Unit
             },
             Stmt::Return(e) => {
@@ -64,8 +80,12 @@ impl<'a> Interpreter<'a> {
     pub fn translate_expr(&mut self, expr: &'_ Expression<'_>) -> Value {
         match expr {
             Expression::Int(x) => Value::Int(x.data),
+            Expression::String(idx, data) => {
+                self.heap.insert(*idx, HeapValue::String(data.data.to_owned()));
+                Value::HeapId(*idx)
+            }
             Expression::Bool(x) => Value::Bool(*x),
-            Expression::Name(name) => *self.values.last().unwrap().get(name.data).unwrap(),
+            Expression::Name(name) => *self.stack.last().unwrap().get(name.data).unwrap(),
             Expression::Add(l, r) => self.int_func(l, r, |a, b| a + b),
             Expression::Sub(l, r) => self.int_func(l, r, |a, b| a - b),
             Expression::Mul(l, r) => self.int_func(l, r, |a, b| a * b),
@@ -91,7 +111,16 @@ impl<'a> Interpreter<'a> {
             Expression::Call(name, p) => {
                 if name.data == "print" {
                     let value = self.translate_expr(p.get(0).unwrap());
-                    println!("{value:?}");
+                    match value {
+                        Value::HeapId(idx) => {
+                            match self.heap.get(&idx).unwrap() {
+                                HeapValue::Vec(x) => {println!("{x:?}")},
+                                HeapValue::String(s) => {println!("{s}");},
+                                HeapValue::Class(_) => todo!(),
+                            }
+                        },
+                        _ => {println!("{value:?}");},
+                    }
                     Value::Unit
                 }else {
                     let func = self.funcs.get(name.data).unwrap().clone();
@@ -100,9 +129,9 @@ impl<'a> Interpreter<'a> {
                         let value = self.translate_expr(e);
                         next_value.push(value);
                     }
-                    self.values.push(next_value);
+                    self.stack.push(next_value);
                     let ret = self.translate_block(&func.block);
-                    self.values.pop();
+                    self.stack.pop();
                     ret
                 }
             },

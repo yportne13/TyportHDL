@@ -5,6 +5,7 @@ use crate::Span;
 #[derive(Debug, Clone)]
 pub enum Expression<'a> {
     Int(Span<i64>),
+    String(usize, Span<String>),
     Bool(bool),
     Name(Span<usize>),
     Add(Box<Expression<'a>>, Box<Expression<'a>>),
@@ -47,6 +48,7 @@ pub fn hir_to_mir(from: Vec<crate::hir::Func<'_>>) -> Vec<Func<'_>> {
 struct MirConverter {
     rename: HashMap<String, usize>,
     rename_idx: usize,
+    heap_idx: usize,
 }
 
 impl MirConverter {
@@ -54,6 +56,7 @@ impl MirConverter {
         Self {
             rename: Default::default(),
             rename_idx: 0,
+            heap_idx: 0,
         }
     }
     pub fn convert<'b>(&'_ mut self, from: crate::hir::Func<'b>) -> Func<'b> {
@@ -95,6 +98,11 @@ impl MirConverter {
     fn convert_expr<'b>(&'_ mut self, x: crate::hir::Expression<'b>) -> Expression<'b> {
         match x {
             crate::hir::Expression::Int(x) => Expression::Int(x),
+            crate::hir::Expression::String(x) => {
+                let ret = Expression::String(self.heap_idx, x);
+                self.heap_idx += 1;
+                ret
+            },
             crate::hir::Expression::Bool(x) => Expression::Bool(x),
             crate::hir::Expression::Name(x) => {
                 let idx = self.rename.get(x.data).unwrap();

@@ -266,6 +266,7 @@ impl<'a> FunctionTranslator<'a> {
     fn translate_expr(&mut self, expr: Expression<'_>) -> Value {
         match expr {
             Expression::Int(imm) => self.builder.ins().iconst(self.int, imm.data),
+            Expression::String(idx, data) => {todo!()}
             Expression::Bool(imm) => self.builder.ins().iconst(self.int, imm as i64),
             Expression::Name(name) => {
                 let variable = self.variables.get(&name.data).expect("variable not defined");

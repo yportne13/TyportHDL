@@ -3,6 +3,7 @@ use crate::Span;
 #[derive(Debug, Clone)]
 pub enum Expression<'a> {
     Int(Span<i64>),
+    String(Span<String>),
     Bool(bool),
     Name(Span<&'a str>),
     Add(Box<Expression<'a>>, Box<Expression<'a>>),
@@ -19,6 +20,7 @@ impl<'a> From<typort_parser::simple_example::Expression<'a>> for Expression<'a> 
     fn from(value: typort_parser::simple_example::Expression<'a>) -> Self {
         match value {
             typort_parser::simple_example::Expression::Int(x) => Expression::Int(x.into()),
+            typort_parser::simple_example::Expression::String(x) => Expression::String(x.into()),
             typort_parser::simple_example::Expression::Bool(x) => Expression::Bool(x),
             typort_parser::simple_example::Expression::Name(x) => Expression::Name(x.into()),
             typort_parser::simple_example::Expression::Add(a, b) => {

@@ -88,9 +88,38 @@ pub mod simple_example {
         Parser::new(f) << whitespace()
     }
 
+    pub fn escaped_quoted_span<'a>() -> Parser!(Span<String>) {
+        fn f(input: &str, loc: Location) -> (Option<Span<String>>, &str, Location) {
+            if let Some(x) = input.strip_prefix('\"') {
+                if let Some((a, b)) = x.split_once('\"') {
+                    //TODO: check if there is any \n in a
+                    let len = a.len() + 2;
+                    let ret = Span {
+                        data: a.to_owned(),
+                        offset: loc.offset,
+                        line: loc.line,
+                        len,
+                        path: None,
+                    };
+                    let mut loc = loc;
+                    loc.offset += len;
+                    loc.col += len;
+                    (Some(ret), b, loc)
+                } else {
+                    (None, input, loc)
+                }
+            }else {
+                (None, input, loc)
+            }            
+        }
+        Parser::new(f) << whitespace()
+    }
+
+
     #[derive(Debug, Clone)]
     pub enum Expression<'a> {
         Int(Span<i64>),
+        String(Span<String>),
         Bool(bool),
         Name(Span<&'a str>),
         Add(Box<Expression<'a>>, Box<Expression<'a>>),
@@ -174,6 +203,7 @@ pub mod simple_example {
         expr_base: Expression<'a> = expr_call
 
         expr_literal: Expression<'a> = int -> (Expression::Int)
+            | escaped_quoted_span -> (Expression::String)
             | "true" -> (|_| Expression::Bool(true))
             | "false" -> (|_| Expression::Bool(false))
 
@@ -284,6 +314,13 @@ fn testloop(n : i64) -> i64 {
         ret = ret + x
     }
     return ret
+}
+        "#);//TODO:when remove last }, infinited loop
+        println!("{:#?}", f);
+        let f = file().run(r#"
+fn main() -> String {
+    let ret = "abcd"
+    ret
 }
         "#);//TODO:when remove last }, infinited loop
         println!("{:#?}", f);

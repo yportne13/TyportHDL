@@ -1,0 +1,6 @@
+
+fn main() -> String {
+    let a = "abcd"
+    print(a)
+    a
+}
