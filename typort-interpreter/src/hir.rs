@@ -67,7 +67,6 @@ pub enum Stmt<'a> {
     Let(Span<&'a str>, Expression<'a>),
     Assign(Span<&'a str>, Expression<'a>),
     Return(Expression<'a>),
-    //For(Span<&'a str>, Expression<'a>, Expression<'a>, Vec<Stmt<'a>>),
     While(Expression<'a>, Vec<Stmt<'a>>),
 }
 

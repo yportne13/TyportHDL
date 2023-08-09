@@ -24,9 +24,10 @@ pub struct Class {
 }
 
 pub struct Interpreter<'a> {
-    stack: Vec<Vec<Value>>,
+    stack: Vec<Value>,
     heap: HashMap<usize, HeapValue>,
     funcs: HashMap<String, Func<'a>>,
+    func_stack_offset: usize,
 }
 
 impl<'a> Interpreter<'a> {
@@ -36,9 +37,10 @@ impl<'a> Interpreter<'a> {
             funcs_hash.insert(f.name.data.to_owned(), f);
         }
         Self {
-            stack: vec![vec![]],
+            stack: vec![],
             heap: Default::default(),
             funcs: funcs_hash,
+            func_stack_offset: 0,
         }
     }
     pub fn run(&mut self) -> Value {
@@ -57,11 +59,11 @@ impl<'a> Interpreter<'a> {
             Stmt::Expr(e) => self.translate_expr(e),
             Stmt::Let(_, e) => {
                 let value = self.translate_expr(e);
-                self.stack.last_mut().unwrap().push(value);
+                self.stack.push(value);
                 Value::Unit
             },
             Stmt::Assign(name, e) => {
-                *self.stack.last_mut().unwrap().get_mut(name.data).unwrap() = self.translate_expr(e);
+                *self.stack.get_mut(self.func_stack_offset + name.data).unwrap() = self.translate_expr(e);
                 Value::Unit
             },
             Stmt::Return(e) => {
@@ -85,7 +87,7 @@ impl<'a> Interpreter<'a> {
                 Value::HeapId(*idx)
             }
             Expression::Bool(x) => Value::Bool(*x),
-            Expression::Name(name) => *self.stack.last().unwrap().get(name.data).unwrap(),
+            Expression::Name(name) => *self.stack.get(self.func_stack_offset + name.data).unwrap(),
             Expression::Add(l, r) => self.int_func(l, r, |a, b| a + b),
             Expression::Sub(l, r) => self.int_func(l, r, |a, b| a - b),
             Expression::Mul(l, r) => self.int_func(l, r, |a, b| a * b),
@@ -122,16 +124,25 @@ impl<'a> Interpreter<'a> {
                         _ => {println!("{value:?}");},
                     }
                     Value::Unit
+                }else if name.data == "Array" {
+                    let value = p.iter()
+                        .map(|x| self.translate_expr(x))
+                        .collect::<Vec<_>>();
+                    let idx = self.heap.len();
+                    self.heap.insert(idx, HeapValue::Vec(value));
+                    Value::HeapId(idx)
                 }else {
                     let func = self.funcs.get(name.data).unwrap().clone();
-                    let mut next_value = Vec::new();
+                    let old_offset = self.func_stack_offset;
+                    let next_offset = self.stack.len();
                     for ((_, _), e) in func.params.iter().zip(p.iter()) {
                         let value = self.translate_expr(e);
-                        next_value.push(value);
+                        self.stack.push(value);
                     }
-                    self.stack.push(next_value);
+                    self.func_stack_offset = next_offset;
                     let ret = self.translate_block(&func.block);
-                    self.stack.pop();
+                    self.stack.truncate(next_offset);
+                    self.func_stack_offset = old_offset;
                     ret
                 }
             },

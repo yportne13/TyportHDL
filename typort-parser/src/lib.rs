@@ -251,9 +251,6 @@ pub mod simple_example {
 
         arg: Expression<'a> = expr
 
-
-        test_for: ((Span<&'a str>, Expression<'a>), Expression<'a>) = "for" >> ("(" >> (name << "<-") * (expr << "until") * (expr << ")"))
-        //test_for: Span<&'a str> = "for" >> "(" >> (name << "<-")
     }
 
     #[test]
@@ -322,7 +319,14 @@ fn main() -> String {
     let ret = "abcd"
     ret
 }
-        "#);//TODO:when remove last }, infinited loop
+        "#);
+        println!("{:#?}", f);
+        let f = file().run(r#"
+fn main() -> Unit {
+    let x = Array(1,2,3,4)
+    print(x)
+}
+        "#);
         println!("{:#?}", f);
     }
 }

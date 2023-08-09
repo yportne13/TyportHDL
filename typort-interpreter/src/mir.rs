@@ -32,7 +32,6 @@ pub enum Stmt<'a> {
     Let(Span<usize>, Expression<'a>),
     Assign(Span<usize>, Expression<'a>),
     Return(Expression<'a>),
-    //For(Span<&'a str>, Expression<'a>, Expression<'a>, Vec<Stmt<'a>>),
     While(Expression<'a>, Vec<Stmt<'a>>),
 }
 

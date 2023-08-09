@@ -44,6 +44,7 @@ fn main() {
     println!("{ret:?}");
     let ret = run_code_vm(STRING);
     println!("{ret:?}");
+    let _ = run_code_vm(ARRAY);
 }
 
 unsafe fn run_code<I, O>(code: &str, input: I) -> Result<O, String> {
@@ -74,6 +75,7 @@ const FIB: &str = include_str!("../../examples/fib.typort");
 const FOR: &str = include_str!("../../examples/for.typort");
 const WHILE: &str = include_str!("../../examples/while.typort");
 const STRING: &str = include_str!("../../examples/string.typort");
+const ARRAY: &str = include_str!("../../examples/array.typort");
 
 #[test]
 fn test_jit() {
