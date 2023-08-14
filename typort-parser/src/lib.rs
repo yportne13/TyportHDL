@@ -129,7 +129,7 @@ pub mod simple_example {
         Eq(Box<Expression<'a>>, Box<Expression<'a>>),
         Neq(Box<Expression<'a>>, Box<Expression<'a>>),
         Call(Span<&'a str>, Vec<Expression<'a>>),
-        If(Box<Expression<'a>>, Vec<Stmt<'a>>, Option<Vec<Stmt<'a>>>),
+        If(Box<Expression<'a>>, Block<'a>, Option<Block<'a>>),
     }
 
     #[derive(Debug, Clone)]
@@ -137,8 +137,11 @@ pub mod simple_example {
         pub name: Span<&'a str>,
         pub params: Vec<(Span<&'a str>, Span<&'a str>)>,
         pub return_type: Option<Span<&'a str>>,
-        pub block: Vec<Stmt<'a>>,
+        pub block: Block<'a>,
     }
+
+    #[derive(Debug, Clone)]
+    pub struct Block<'a>(pub Vec<Stmt<'a>>);
 
     #[derive(Debug, Clone)]
     pub enum Stmt<'a> {
@@ -146,8 +149,8 @@ pub mod simple_example {
         Let(Span<&'a str>, Expression<'a>),
         Assign(Span<&'a str>, Expression<'a>),
         Return(Expression<'a>),
-        For(Span<&'a str>, Expression<'a>, Expression<'a>, Vec<Stmt<'a>>),
-        While(Expression<'a>, Vec<Stmt<'a>>),
+        For(Span<&'a str>, Expression<'a>, Expression<'a>, Block<'a>),
+        While(Expression<'a>, Block<'a>),
     }
 
     parser! {
@@ -168,7 +171,7 @@ pub mod simple_example {
 
         type_expr: Span<&'a str> = name
 
-        block: Vec<Stmt<'a>> = "{" >> {stmt} << "}"
+        block: Block<'a> = "{" >> {stmt} -> (Block) << "}"
 
         stmt: Stmt<'a> = stmt_let
             | stmt_return

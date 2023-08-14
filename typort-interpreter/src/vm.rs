@@ -77,6 +77,9 @@ impl<'a> Interpreter<'a> {
                 }
                 ret
             },
+            Stmt::Block(b) => {
+                self.translate_block(b)
+            }
         }
     }
     pub fn translate_expr(&mut self, expr: &'_ Expression<'_>) -> Value {

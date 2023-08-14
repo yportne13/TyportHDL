@@ -33,6 +33,7 @@ pub enum Stmt<'a> {
     Assign(Span<usize>, Expression<'a>),
     Return(Expression<'a>),
     While(Expression<'a>, Vec<Stmt<'a>>),
+    Block(Vec<Stmt<'a>>),
 }
 
 pub fn hir_to_mir(from: Vec<crate::hir::Func<'_>>) -> Vec<Func<'_>> {
@@ -92,6 +93,7 @@ impl MirConverter {
             crate::hir::Stmt::While(e, v) => {
                 Stmt::While(self.convert_expr(e), v.into_iter().map(|x| self.convert_stmt(x)).collect())
             }
+            crate::hir::Stmt::Block(b) => Stmt::Block(b.into_iter().map(|bb| self.convert_stmt(bb)).collect()),
         }
     }
     fn convert_expr<'b>(&'_ mut self, x: crate::hir::Expression<'b>) -> Expression<'b> {

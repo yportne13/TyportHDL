@@ -260,6 +260,13 @@ impl<'a> FunctionTranslator<'a> {
 
                 // Just return 0 for now.
                 self.builder.ins().iconst(self.int, 0)
+            },
+            Stmt::Block(b) => {
+                let mut ret = self.builder.ins().iconst(self.int, 0);
+                for stmt in b {
+                    ret = self.translate_stmt(stmt);
+                }
+                ret
             }
         }
     }
@@ -510,6 +517,11 @@ fn declare_variables_in_stmt(
                 for stmt in body {
                     declare_variables_in_stmt(int, builder, variables, index, stmt);
                 }
+            }
+        }
+        Stmt::Block(b) => {
+            for stmt in b {
+                declare_variables_in_stmt(int, builder, variables, index, stmt);
             }
         }
         //Expr::WhileLoop(ref _condition, ref loop_body) => {
