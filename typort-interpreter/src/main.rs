@@ -29,6 +29,14 @@ impl<T> From<typort_parser::simple_example::Span<T>> for Span<T> {
     }
 }
 
+type Line = usize;
+type Col = usize;
+
+pub struct Diagnostic {
+    pub msg: String,
+    pub range: ((Line, Col), (Line, Col)),
+}
+
 fn main() {
     let ret = unsafe { run_code::<i64, i64>(FIB, 11) };
     println!("{ret:?}");

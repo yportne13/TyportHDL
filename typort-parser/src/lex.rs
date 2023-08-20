@@ -47,7 +47,7 @@ pub fn id<'a>() -> Parser!(Span<&'a str>) {
         let ret = Span {
             data: unsafe { input.get_unchecked(..len)},
             offset: loc.offset,
-            line: loc.line,
+            range: ((loc.line, loc.col), (loc.line, loc.col + len)),
             len,
             path: None,
         };
@@ -80,7 +80,7 @@ pub fn varid<'a>() -> Parser!(Span<&'a str>) {
         let ret = Span {
             data: unsafe { input.get_unchecked(..len)},
             offset: loc.offset,
-            line: loc.line,
+            range: ((loc.line, loc.col), (loc.line, loc.col + len)),
             len,
             path: None,
         };

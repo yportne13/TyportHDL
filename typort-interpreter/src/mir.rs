@@ -130,6 +130,9 @@ impl MirConverter {
             crate::hir::Expression::Call(a, b) => {
                 Expression::Call(a, b.into_iter().map(|x| self.convert_expr(x)).collect())
             }
+            crate::hir::Expression::ObjCall(a, b, c) => {
+                Expression::Call(a, c.into_iter().map(|x| self.convert_expr(x)).collect())//TODO: b
+            }
             crate::hir::Expression::If(c, b, e) => Expression::If(
                 Box::new(self.convert_expr(*c)),
                 b.into_iter().map(|x| self.convert_stmt(x)).collect(),

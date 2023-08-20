@@ -36,7 +36,7 @@ pub mod simple_example {
             let ret = Span {
                 data: unsafe { input.get_unchecked(..len) },
                 offset: loc.offset,
-                line: loc.line,
+                range: ((loc.line, loc.col), (loc.line, loc.col + len)),
                 len,
                 path: None,
             };
@@ -76,7 +76,7 @@ pub mod simple_example {
                     .parse::<i64>()
                     .unwrap(), //TODO:unwrap may overflow
                 offset: loc.offset,
-                line: loc.line,
+                range: ((loc.line, loc.col), (loc.line, loc.col + len)),
                 len,
                 path: None,
             };
@@ -97,7 +97,7 @@ pub mod simple_example {
                     let ret = Span {
                         data: a.to_owned(),
                         offset: loc.offset,
-                        line: loc.line,
+                        range: ((loc.line, loc.col), (loc.line, loc.col + len)),
                         len,
                         path: None,
                     };
@@ -122,6 +122,7 @@ pub mod simple_example {
         String(Span<String>),
         Bool(bool),
         Name(Span<&'a str>),
+        ObjVal(Span<&'a str>, Span<&'a str>),
         Add(Box<Expression<'a>>, Box<Expression<'a>>),
         Sub(Box<Expression<'a>>, Box<Expression<'a>>),
         Mul(Box<Expression<'a>>, Box<Expression<'a>>),
@@ -129,6 +130,7 @@ pub mod simple_example {
         Eq(Box<Expression<'a>>, Box<Expression<'a>>),
         Neq(Box<Expression<'a>>, Box<Expression<'a>>),
         Call(Span<&'a str>, Vec<Expression<'a>>),
+        ObjCall(Span<&'a str>, Span<&'a str>, Vec<Expression<'a>>),
         If(Box<Expression<'a>>, Block<'a>, Option<Block<'a>>),
     }
 
@@ -209,6 +211,12 @@ pub mod simple_example {
             | escaped_quoted_span -> (Expression::String)
             | "true" -> (|_| Expression::Bool(true))
             | "false" -> (|_| Expression::Bool(false))
+
+        expr_obj_item: Expression<'a> = ((name << ".") * name * [arg_list]) -> (|((a, b), args)| if let Some(args) = args {
+            Expression::ObjCall(a, b, args)
+        }else {
+            Expression::ObjVal(a, b)
+        })
 
         expr_name: Expression<'a> = (name * [arg_list]) -> (|(a, b)| if let Some(args) = b {
                     Expression::Call(a, args)
