@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use crate::{Span, Diagnostic};
 
@@ -42,7 +42,7 @@ pub enum Stmt<'a> {
 /// 2. xxx() -> xxx.apply()
 #[derive(Default)]
 struct HirConverter {
-    values: HashSet<String>,
+    values: HashMap<String, bool>,
     diag: Vec<Diagnostic>,
 }
 
@@ -56,13 +56,26 @@ impl HirConverter {
     ) -> Stmt<'b> {
         match value {
             typort_parser::simple_example::Stmt::Expr(e) => Stmt::Expr(self.convert_expr(e)),
-            typort_parser::simple_example::Stmt::Let(a, b) => {
-                if !self.values.insert(a.data.to_owned()) {
+            typort_parser::simple_example::Stmt::Val(a, b) => {
+                if self.values.insert(a.data.to_owned(), false).is_some() {
+                    self.diag.push(Diagnostic { msg: format!("redefine {}", a.data), range: a.range })
+                }
+                Stmt::Let(a.into(), self.convert_expr(b))
+            }
+            typort_parser::simple_example::Stmt::Var(a, b) => {
+                if self.values.insert(a.data.to_owned(), true).is_some() {
                     self.diag.push(Diagnostic { msg: format!("redefine {}", a.data), range: a.range })
                 }
                 Stmt::Let(a.into(), self.convert_expr(b))
             }
             typort_parser::simple_example::Stmt::Assign(a, b) => {
+                if let Some(mutable) = self.values.get(a.data) {
+                    if !mutable {
+                        self.diag.push(Diagnostic { msg: format!("\"{}\" is immutable", a.data), range: a.range })
+                    }
+                } else {
+                    self.diag.push(Diagnostic { msg: format!("\"{}\" not defined", a.data), range: a.range })
+                }
                 Stmt::Assign(a.into(), self.convert_expr(b))
             }
             typort_parser::simple_example::Stmt::Return(e) => Stmt::Return(self.convert_expr(e)),
@@ -72,7 +85,7 @@ impl HirConverter {
             ),
             typort_parser::simple_example::Stmt::For(v, from, to, b) => {
                 let name = v.data.to_owned();
-                if !self.values.insert(name.to_owned()) {
+                if self.values.insert(name.to_owned(), true).is_some() {
                     self.diag.push(Diagnostic { msg: format!("redefine {name}"), range: v.range })
                 }
                 let ret = Stmt::Block(vec![
@@ -109,7 +122,7 @@ impl HirConverter {
             typort_parser::simple_example::Expression::String(x) => Expression::String(x.into()),
             typort_parser::simple_example::Expression::Bool(x) => Expression::Bool(x),
             typort_parser::simple_example::Expression::Name(x) => {
-                if !self.values.contains(x.data) {
+                if !self.values.contains_key(x.data) {
                     self.diag.push(Diagnostic {
                         msg: format!("use of undeclared value {}", x.data),
                         range: x.range,
@@ -118,7 +131,7 @@ impl HirConverter {
                 Expression::Name(x.into())
             },
             typort_parser::simple_example::Expression::ObjVal(a, b) => {
-                if !self.values.contains(a.data) {
+                if !self.values.contains_key(a.data) {
                     self.diag.push(Diagnostic {
                         msg: format!("use of undeclared value {}", a.data),
                         range: a.range,
@@ -151,7 +164,7 @@ impl HirConverter {
                 Box::new(self.convert_expr(*b)),
             ),
             typort_parser::simple_example::Expression::Call(a, b) => {
-                if self.values.contains(a.data) {
+                if self.values.contains_key(a.data) {
                     Expression::ObjCall(
                         a.into(),
                         Span { data: "apply" },

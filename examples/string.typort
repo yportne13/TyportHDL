@@ -1,6 +1,6 @@
 
 fn main() -> String {
-    let a = "abcd"
+    val a = "abcd"
     print(a)
     a
 }

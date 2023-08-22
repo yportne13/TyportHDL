@@ -1,7 +1,7 @@
 
 fn testloop(n : i64) -> i64 {
-    let x = 0
-    let ret = 0
+    var x = 0
+    var ret = 0
     while(x != n) {
         x = x + 1
         ret = ret + x

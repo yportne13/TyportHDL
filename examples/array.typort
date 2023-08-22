@@ -1,5 +1,5 @@
 
 fn main() -> Unit {
-    let x = Array(1, 2, 3, 4)
+    val x = Array(1, 2, 3, 4)
     print(x)
 }

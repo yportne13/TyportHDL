@@ -1,6 +1,6 @@
 
 fn testloop(n : i64) -> i64 {
-    let ret = 0
+    var ret = 0
     for(x <- 0 until n) {
         ret = ret + x + 1
     }

@@ -148,7 +148,8 @@ pub mod simple_example {
     #[derive(Debug, Clone)]
     pub enum Stmt<'a> {
         Expr(Expression<'a>),
-        Let(Span<&'a str>, Expression<'a>),
+        Val(Span<&'a str>, Expression<'a>),
+        Var(Span<&'a str>, Expression<'a>),
         Assign(Span<&'a str>, Expression<'a>),
         Return(Expression<'a>),
         For(Span<&'a str>, Expression<'a>, Expression<'a>, Block<'a>),
@@ -184,7 +185,8 @@ pub mod simple_example {
 
         stmt_expr: Stmt<'a> = expr -> (Stmt::Expr)
 
-        stmt_let: Stmt<'a> = (("let" >> name << "=") * expr) -> (|(a, b)| Stmt::Let(a, b))
+        stmt_let: Stmt<'a> = (("val" >> name << "=") * expr) -> (|(a, b)| Stmt::Val(a, b))
+            | (("var" >> name << "=") * expr) -> (|(a, b)| Stmt::Var(a, b))
 
         stmt_assign: Stmt<'a> = ((name << "=") * expr) -> (|(a, b)| Stmt::Assign(a, b))
 
