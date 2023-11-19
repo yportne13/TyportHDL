@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{Span, Diagnostic};
+use crate::{Diagnostic, Span};
 
 #[derive(Debug, Clone)]
 pub enum Expression<'a> {
@@ -35,20 +35,50 @@ pub enum Stmt<'a> {
     Return(Expression<'a>),
     While(Expression<'a>, Vec<Stmt<'a>>),
     Block(Vec<Stmt<'a>>),
+    Func {
+        name: Span<&'a str>,
+        params: Vec<(Span<&'a str>, Span<&'a str>)>,
+        return_type: Option<Span<&'a str>>,
+        block: Vec<Stmt<'a>>,
+    }
 }
+
+#[derive(Debug, Clone)]
+pub struct Class<'a> {
+    //TODO: add type for object, class, case class, abstract class
+    pub name: Span<&'a str>,
+    pub args: Vec<(Span<&'a str>, Span<&'a str>)>,
+    pub extends: Option<Span<&'a str>>,
+    pub with: Vec<Span<&'a str>>,
+    //pub value: Vec<Span<&'a str>>,
+    pub func: HashMap<String, usize>,
+    pub block: Vec<Stmt<'a>>,
+}
+
+type Mutable = bool;
 
 /// convert parser result to hir
 /// 1. for -> while
 /// 2. xxx() -> xxx.apply()
-#[derive(Default)]
 struct HirConverter {
-    values: HashMap<String, bool>,
+    values: Vec<HashMap<String, Mutable>>,
     diag: Vec<Diagnostic>,
 }
 
 impl HirConverter {
     pub fn new() -> Self {
-        Default::default()
+        HirConverter { values: vec![Default::default()], diag: vec![] }
+    }
+    pub fn add_param<'b>(
+        &'_ mut self,
+        param: &'b [(
+            typort_parser::simple_example::Span<&'b str>,
+            typort_parser::simple_example::Span<&'b str>,
+        )],
+    ) {
+        param.iter().for_each(|p| {
+            self.values.last_mut().unwrap().insert(p.0.data.to_owned(), false);
+        });
     }
     pub fn convert_stmt<'b>(
         &'_ mut self,
@@ -57,24 +87,36 @@ impl HirConverter {
         match value {
             typort_parser::simple_example::Stmt::Expr(e) => Stmt::Expr(self.convert_expr(e)),
             typort_parser::simple_example::Stmt::Val(a, b) => {
-                if self.values.insert(a.data.to_owned(), false).is_some() {
-                    self.diag.push(Diagnostic { msg: format!("redefine {}", a.data), range: a.range })
+                if self.values.last_mut().unwrap().insert(a.data.to_owned(), false).is_some() {
+                    self.diag.push(Diagnostic {
+                        msg: format!("redefine {}", a.data),
+                        range: a.range,
+                    })
                 }
                 Stmt::Let(a.into(), self.convert_expr(b))
             }
             typort_parser::simple_example::Stmt::Var(a, b) => {
-                if self.values.insert(a.data.to_owned(), true).is_some() {
-                    self.diag.push(Diagnostic { msg: format!("redefine {}", a.data), range: a.range })
+                if self.values.last_mut().unwrap().insert(a.data.to_owned(), true).is_some() {
+                    self.diag.push(Diagnostic {
+                        msg: format!("redefine {}", a.data),
+                        range: a.range,
+                    })
                 }
                 Stmt::Let(a.into(), self.convert_expr(b))
             }
             typort_parser::simple_example::Stmt::Assign(a, b) => {
-                if let Some(mutable) = self.values.get(a.data) {
+                if let Some(mutable) = self.values.last().unwrap().get(a.data) {
                     if !mutable {
-                        self.diag.push(Diagnostic { msg: format!("\"{}\" is immutable", a.data), range: a.range })
+                        self.diag.push(Diagnostic {
+                            msg: format!("\"{}\" is immutable", a.data),
+                            range: a.range,
+                        })
                     }
                 } else {
-                    self.diag.push(Diagnostic { msg: format!("\"{}\" not defined", a.data), range: a.range })
+                    self.diag.push(Diagnostic {
+                        msg: format!("\"{}\" not defined", a.data),
+                        range: a.range,
+                    })
                 }
                 Stmt::Assign(a.into(), self.convert_expr(b))
             }
@@ -85,8 +127,11 @@ impl HirConverter {
             ),
             typort_parser::simple_example::Stmt::For(v, from, to, b) => {
                 let name = v.data.to_owned();
-                if self.values.insert(name.to_owned(), true).is_some() {
-                    self.diag.push(Diagnostic { msg: format!("redefine {name}"), range: v.range })
+                if self.values.last_mut().unwrap().insert(name.to_owned(), true).is_some() {
+                    self.diag.push(Diagnostic {
+                        msg: format!("redefine {name}"),
+                        range: v.range,
+                    })
                 }
                 let ret = Stmt::Block(vec![
                     Stmt::Let(v.clone().into(), self.convert_expr(from)),
@@ -108,7 +153,26 @@ impl HirConverter {
                         .concat(),
                     ),
                 ]);
-                self.values.remove(&name);
+                self.values.last_mut().unwrap().remove(&name);
+                ret
+            }
+            typort_parser::simple_example::Stmt::Func(f) => {
+                self.values.push(Default::default());
+                for param in f.params.iter() {
+                    if self.values.last_mut().unwrap().insert(param.0.data.to_owned(), false).is_some() {
+                        self.diag.push(Diagnostic {
+                            msg: format!("redefine {}", param.0.data),
+                            range: param.0.range,
+                        })
+                    }
+                }
+                let ret = Stmt::Func {
+                    name: f.name.into(),
+                    params: f.params.into_iter().map(|x| (x.0.into(), x.1.into())).collect(),
+                    return_type: f.return_type.map(|x| x.into()),
+                    block: f.block.0.into_iter().map(|x| self.convert_stmt(x)).collect(),
+                };
+                self.values.pop();
                 ret
             }
         }
@@ -122,22 +186,22 @@ impl HirConverter {
             typort_parser::simple_example::Expression::String(x) => Expression::String(x.into()),
             typort_parser::simple_example::Expression::Bool(x) => Expression::Bool(x),
             typort_parser::simple_example::Expression::Name(x) => {
-                if !self.values.contains_key(x.data) {
+                if !self.values.last().unwrap().contains_key(x.data) {
                     self.diag.push(Diagnostic {
                         msg: format!("use of undeclared value {}", x.data),
                         range: x.range,
                     })
                 }
                 Expression::Name(x.into())
-            },
+            }
             typort_parser::simple_example::Expression::ObjVal(a, b) => {
-                if !self.values.contains_key(a.data) {
+                if !self.values.last().unwrap().contains_key(a.data) {
                     self.diag.push(Diagnostic {
                         msg: format!("use of undeclared value {}", a.data),
                         range: a.range,
                     })
                 }
-                Expression::Name(a.into())//TODO: b
+                Expression::Name(a.into()) //TODO: b
             }
             typort_parser::simple_example::Expression::Add(a, b) => Expression::Add(
                 Box::new(self.convert_expr(*a)),
@@ -164,7 +228,7 @@ impl HirConverter {
                 Box::new(self.convert_expr(*b)),
             ),
             typort_parser::simple_example::Expression::Call(a, b) => {
-                if self.values.contains_key(a.data) {
+                if self.values.last().unwrap().contains_key(a.data) {
                     Expression::ObjCall(
                         a.into(),
                         Span { data: "apply" },
@@ -176,7 +240,7 @@ impl HirConverter {
                         b.into_iter().map(|x| self.convert_expr(x)).collect(),
                     )
                 }
-            },
+            }
             typort_parser::simple_example::Expression::ObjCall(a, b, c) => Expression::ObjCall(
                 a.into(),
                 b.into(),
@@ -191,23 +255,49 @@ impl HirConverter {
     }
 }
 
-pub fn parse_to_hir(from: Vec<typort_parser::simple_example::Func<'_>>) -> Vec<Func<'_>> {
-    let mut converter = HirConverter::new();
+pub fn parse_to_hir(from: Vec<typort_parser::simple_example::TopItem<'_>>) -> Vec<Class<'_>> {
     from.into_iter()
-        .map(|x| Func {
-            name: x.name.into(),
-            params: x
-                .params
-                .into_iter()
-                .map(|x| (x.0.into(), x.1.into()))
-                .collect(),
-            return_type: x.return_type.map(|x| x.into()),
-            block: x
-                .block
-                .0
-                .into_iter()
-                .map(|x| converter.convert_stmt(x))
-                .collect(),
+        .map(|x| {
+            let mut converter = HirConverter::new();
+            let ret = match x {
+                typort_parser::simple_example::TopItem::Class(c) => {
+                    converter.add_param(&c.args);
+                    Class {
+                        name: c.name.into(),
+                        args: c
+                            .args
+                            .into_iter()
+                            .map(|x| (x.0.into(), x.1.into()))
+                            .collect(),
+                        extends: c.extends.map(|x| x.into()),
+                        with: c.with.into_iter().map(|x| x.into()).collect(),
+                        func: Default::default(),
+                        block: c
+                            .block
+                            .0
+                            .into_iter()
+                            .map(|x| converter.convert_stmt(x))
+                            .collect(),
+                    }
+                }
+                typort_parser::simple_example::TopItem::Object(o) => Class {
+                    name: o.name.into(),
+                    args: vec![],
+                    extends: o.extends.map(|x| x.into()),
+                    with: o.with.into_iter().map(|x| x.into()).collect(),
+                    func: Default::default(),
+                    block: o
+                        .block
+                        .0
+                        .into_iter()
+                        .map(|x| converter.convert_stmt(x))
+                        .collect(),
+                },
+            };
+            if !converter.diag.is_empty() {
+                println!("{:?}", converter.diag); //TODO: do not print
+            }
+            ret
         })
         .collect()
 }

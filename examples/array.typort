@@ -1,5 +1,5 @@
 
-fn main() -> Unit {
+object main extends App {
     val x = Array(1, 2, 3, 4)
     print(x)
 }

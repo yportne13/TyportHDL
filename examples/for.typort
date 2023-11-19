@@ -1,12 +1,11 @@
 
-fn testloop(n : i64) -> i64 {
+object main extends App {
+  def testloop(n: i64): i64 = {
     var ret = 0
     for(x <- 0 until n) {
-        ret = ret + x + 1
+      ret = ret + x + 1
     }
-    return ret
-}
-
-fn main() -> i64 {
-    return testloop(100)
+    ret
+  }
+  testloop(100)
 }

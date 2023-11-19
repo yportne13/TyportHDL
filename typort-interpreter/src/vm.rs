@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::mir::*;
+use crate::{mir::*, built_in::{bi_print, bi_array}};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Value {
@@ -14,39 +14,48 @@ pub enum Value {
 pub enum HeapValue {
     Vec(Vec<Value>),
     String(String),
-    Class(Class),
+    //Class(Class),
 }
 
-#[derive(Clone, Debug)]
+/*#[derive(Clone, Debug)]
 pub struct Class {
     values: Vec<Value>,
 
-}
+}*/
 
-pub struct Interpreter<'a> {
+pub struct Interpreter {
+    built_in_func: HashMap<String, Box<dyn Fn(&mut Interpreter, Vec<Value>) -> Value>>,
     stack: Vec<Value>,
-    heap: HashMap<usize, HeapValue>,
-    funcs: HashMap<String, Func<'a>>,
+    pub heap: HashMap<usize, HeapValue>,
+    pub classes: HashMap<String, Class>,
+    funcs: HashMap<String, Func>,
     func_stack_offset: usize,
 }
 
-impl<'a> Interpreter<'a> {
-    pub fn new(funcs: Vec<Func<'a>>) -> Self {
+impl Interpreter {
+    pub fn new(classes: Vec<Class>) -> Self {
         let mut funcs_hash = HashMap::new();
-        for f in funcs {
+        for f in classes {
             funcs_hash.insert(f.name.data.to_owned(), f);
         }
-        Self {
+        let mut built_in_func: HashMap<String, Box<dyn Fn(&mut Interpreter, Vec<Value>) -> Value>> = HashMap::new();
+        built_in_func.insert("print".to_owned(), Box::new(|vm, args| bi_print(vm, args)));
+        built_in_func.insert("Array".to_owned(), Box::new(|vm, args| bi_array(vm, args)));
+
+        Self {                                                                                                                                                                 
+            built_in_func,
             stack: vec![],
             heap: Default::default(),
-            funcs: funcs_hash,
+            classes: funcs_hash,
+            funcs: Default::default(),
             func_stack_offset: 0,
         }
     }
-    pub fn run(&mut self) -> Value {
-        let main = self.funcs.get("main").unwrap().clone();
-        self.translate_block(&main.block)
-    }
+    /*pub fn run(&'a mut self) -> Value {
+        //let main = self.classes.get("main").unwrap().clone();
+        //self.translate_block(&main.block)
+        self.translate_block(&self.classes.get("main").unwrap().block)
+    }*/
     pub fn translate_block(&mut self, stmts: &[Stmt]) -> Value {
         let mut ret = Value::Unit;
         for s in stmts {
@@ -54,7 +63,7 @@ impl<'a> Interpreter<'a> {
         }
         ret
     }
-    pub fn translate_stmt(&mut self, stmt: &'_ Stmt<'_>) -> Value {
+    pub fn translate_stmt(&mut self, stmt: &Stmt) -> Value {
         match stmt {
             Stmt::Expr(e) => self.translate_expr(e),
             Stmt::Let(_, e) => {
@@ -79,10 +88,20 @@ impl<'a> Interpreter<'a> {
             },
             Stmt::Block(b) => {
                 self.translate_block(b)
+            },
+            Stmt::Func { name, params, return_type, block } => {
+                let ret = Func {
+                    name: name.clone(),
+                    params: params.to_vec(),
+                    return_type: return_type.clone(),
+                    block: block.clone(),
+                };
+                self.funcs.insert(name.data.to_owned(), ret);
+                Value::Unit
             }
         }
     }
-    pub fn translate_expr(&mut self, expr: &'_ Expression<'_>) -> Value {
+    pub fn translate_expr(&mut self, expr: &Expression) -> Value {
         match expr {
             Expression::Int(x) => Value::Int(x.data),
             Expression::String(idx, data) => {
@@ -114,31 +133,33 @@ impl<'a> Interpreter<'a> {
                 }
             },
             Expression::Call(name, p) => {
-                if name.data == "print" {
-                    let value = self.translate_expr(p.get(0).unwrap());
-                    match value {
-                        Value::HeapId(idx) => {
-                            match self.heap.get(&idx).unwrap() {
-                                HeapValue::Vec(x) => {println!("{x:?}")},
-                                HeapValue::String(s) => {println!("{s}");},
-                                HeapValue::Class(_) => todo!(),
-                            }
-                        },
-                        _ => {println!("{value:?}");},
-                    }
-                    Value::Unit
-                }else if name.data == "Array" {
-                    let value = p.iter()
-                        .map(|x| self.translate_expr(x))
-                        .collect::<Vec<_>>();
-                    let idx = self.heap.len();
-                    self.heap.insert(idx, HeapValue::Vec(value));
-                    Value::HeapId(idx)
-                }else {
-                    let func = self.funcs.get(name.data).unwrap().clone();
+                let mut args = vec![];
+                for arg in p {
+                    args.push(self.translate_expr(arg))
+                }
+                let mut built_in_func: HashMap<String, Box<dyn Fn(&mut Interpreter, Vec<Value>) -> Value>> = HashMap::new();
+                built_in_func.insert("print".to_owned(), Box::new(bi_print));
+                built_in_func.insert("Array".to_owned(), Box::new(bi_array));
+
+                if let Some(f) = built_in_func.get(&name.data) {
+                    f(self, args)
+                } else if let Some(func) = self.funcs.clone().get(&name.data) {
                     let old_offset = self.func_stack_offset;
                     let next_offset = self.stack.len();
-                    for ((_, _), e) in func.params.iter().zip(p.iter()) {
+                    for (_, e) in func.params.iter().zip(p.iter()) {
+                        let value = self.translate_expr(e);
+                        self.stack.push(value);
+                    }
+                    self.func_stack_offset = next_offset;
+                    let ret = self.translate_block(&func.block);
+                    self.stack.truncate(next_offset);
+                    self.func_stack_offset = old_offset;
+                    ret
+                } else {
+                    let func = self.classes.get(&name.data).unwrap().clone();
+                    let old_offset = self.func_stack_offset;
+                    let next_offset = self.stack.len();
+                    for ((_, _), e) in func.args.iter().zip(p.iter()) {
                         let value = self.translate_expr(e);
                         self.stack.push(value);
                     }
@@ -161,7 +182,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn int_func<F>(&mut self, l: &'_ Expression<'_>, r: &'_ Expression<'_>, f: F) -> Value
+    fn int_func<F>(&mut self, l: &Expression, r: &Expression, f: F) -> Value
     where
         F: Fn(i64, i64) -> i64
     {

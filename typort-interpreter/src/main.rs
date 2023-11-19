@@ -1,6 +1,8 @@
 mod hir;
 mod mir;
-mod jit;
+mod built_in;
+mod ty;
+//mod jit;
 mod vm;
 use hir::parse_to_hir;
 use mir::hir_to_mir;
@@ -32,30 +34,36 @@ impl<T> From<typort_parser::simple_example::Span<T>> for Span<T> {
 type Line = usize;
 type Col = usize;
 
+#[derive(Debug)]
 pub struct Diagnostic {
     pub msg: String,
     pub range: ((Line, Col), (Line, Col)),
 }
 
 fn main() {
-    let ret = unsafe { run_code::<i64, i64>(FIB, 11) };
+    /*let ret = unsafe { run_code::<i64, i64>(FIB, 11) };
     println!("{ret:?}");
     let ret = unsafe { run_code::<i64, i64>(WHILE, 11) };
     println!("{ret:?}");
     let ret = unsafe { run_code::<i64, i64>(FOR, 11) };
-    println!("{ret:?}");
+    println!("{ret:?}");*/
+    println!("##### fib #####\n");
     let ret = run_code_vm(FIB);
     println!("{ret:?}");
+    println!("\n##### while #####\n");
     let ret = run_code_vm(WHILE);
     println!("{ret:?}");
+    println!("\n##### for #####\n");
     let ret = run_code_vm(FOR);
     println!("{ret:?}");
+    println!("\n##### string #####\n");
     let ret = run_code_vm(STRING);
     println!("{ret:?}");
+    println!("\n##### array #####\n");
     let _ = run_code_vm(ARRAY);
 }
 
-unsafe fn run_code<I, O>(code: &str, input: I) -> Result<O, String> {
+/*unsafe fn run_code<I, O>(code: &str, input: I) -> Result<O, String> {
     let mut jit = jit::JIT::default();
     let ast = typort_parser::simple_example::file().run(code).ok_or("parse error")?;
     let hir = parse_to_hir(ast);
@@ -68,14 +76,22 @@ unsafe fn run_code<I, O>(code: &str, input: I) -> Result<O, String> {
     let code_fn = mem::transmute::<_, fn(I) -> O>(code_ptr);
     // And now we can call it!
     Ok(code_fn(input))
-}
+}*/
 
 fn run_code_vm(code: &str) -> Result<vm::Value, String> {
+    let (_, parse_fail, _) = typort_parser::simple_example::file().run_with_out(code, Default::default());
+    if !parse_fail.is_empty() {
+        println!("parse fail at {:?}", parse_fail);
+    }
     let ast = typort_parser::simple_example::file().run(code).ok_or("parse error")?;
     let hir = parse_to_hir(ast);
+    //println!("hir: {:#?}", hir);
     let mir = hir_to_mir(hir);
+    //println!("mir: {:#?}", mir);
     let mut vm = vm::Interpreter::new(mir);
-    let ret = vm.run();
+    let main = vm.classes.get("main").unwrap().clone();
+    let ret = vm.translate_block(&main.block);
+    //let ret = vm.run();
     Ok(ret)
 }
 
@@ -85,7 +101,7 @@ const WHILE: &str = include_str!("../../examples/while.typort");
 const STRING: &str = include_str!("../../examples/string.typort");
 const ARRAY: &str = include_str!("../../examples/array.typort");
 
-#[test]
+/*#[test]
 fn test_jit() {
     let ret = unsafe { run_code::<i64, i64>(FIB, 11) };
     println!("{ret:?}");
@@ -93,7 +109,7 @@ fn test_jit() {
     println!("{ret:?}");
     let ret = unsafe { run_code::<i64, i64>(FOR, 11) };
     println!("{ret:?}");
-}
+}*/
 
 #[test]
 fn test_vm() {

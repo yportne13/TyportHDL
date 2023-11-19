@@ -1,0 +1,32 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "typort",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [{
+				"name": "keyword.control.typort",
+				"match": "\\b(if|while|for|return|object|class|match|def|import)\\b"
+			}]
+		},
+		"strings": {
+			"name": "string.quoted.double.typort",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.typort",
+					"match": "\\\\."
+				}
+			]
+		}
+	},
+	"scopeName": "source.typort"
+}

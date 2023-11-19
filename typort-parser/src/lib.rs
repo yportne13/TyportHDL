@@ -146,6 +146,29 @@ pub mod simple_example {
     pub struct Block<'a>(pub Vec<Stmt<'a>>);
 
     #[derive(Debug, Clone)]
+    pub struct Object<'a> {
+        pub name: Span<&'a str>,
+        pub extends: Option<Span<&'a str>>,
+        pub with: Vec<Span<&'a str>>,
+        pub block: Block<'a>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct Class<'a> {
+        pub name: Span<&'a str>,
+        pub args: Vec<(Span<&'a str>, Span<&'a str>)>,
+        pub extends: Option<Span<&'a str>>,
+        pub with: Vec<Span<&'a str>>,
+        pub block: Block<'a>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum TopItem<'a> {
+        Class(Class<'a>),
+        Object(Object<'a>),
+    }
+
+    #[derive(Debug, Clone)]
     pub enum Stmt<'a> {
         Expr(Expression<'a>),
         Val(Span<&'a str>, Expression<'a>),
@@ -154,13 +177,38 @@ pub mod simple_example {
         Return(Expression<'a>),
         For(Span<&'a str>, Expression<'a>, Expression<'a>, Block<'a>),
         While(Expression<'a>, Block<'a>),
+        Func(Func<'a>),
     }
 
     parser! {
 
-        file: Vec<Func<'a>> = whitespace >> {r#fn}
+        file: Vec<TopItem<'a>> = whitespace >> {
+            object -> (TopItem::Object)
+            | class -> (TopItem::Class)
+        }
 
-        r#fn: Func<'a> = ("fn" >> name * param_list * ["->" >> type_expr] * block)
+        object: Object<'a> = (("object" >> name) * ["extends" >> name] * {"with" >> name} * block)
+            -> (|(((name, extends), with), block)| {
+                Object {
+                    name,
+                    extends,
+                    with,
+                    block,
+                }
+            })
+
+        class: Class<'a> = (("class" >> name) * [param_list] * ["extends" >> name] * {"with" >> name} * block)
+            -> (|((((name, args), extends), with), block)| {
+                Class {
+                    name,
+                    args: args.unwrap_or(vec![]),
+                    extends,
+                    with,
+                    block,
+                }
+            })
+
+        func: Func<'a> = ("def" >> name * param_list * [":" >> type_expr << ["="]] * block)
             -> (|(((name, params), return_type), block)| Func {
                 name,
                 params,
@@ -177,6 +225,7 @@ pub mod simple_example {
         block: Block<'a> = "{" >> {stmt} -> (Block) << "}"
 
         stmt: Stmt<'a> = stmt_let
+            | func -> (Stmt::Func)
             | stmt_return
             | stmt_while
             | stmt_for

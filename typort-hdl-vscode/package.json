@@ -1,0 +1,68 @@
+{
+  "name": "typort-hdl",
+  "displayName": "typort-hdl",
+  "description": "",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.71.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yportne13/TyportHDL"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:typort"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration":[
+      {
+        "title": "TyportHDL Language Server",
+        "properties": {
+          "typort-hdl.typort-lsp-Binary.path": {
+            "scope": "window",
+            "type": "string",
+            "default": "typort-lsp",
+            "markdownDescription": "Specify typort-lsp binary path."
+          }
+        }
+      }
+    ],
+    "languages": [{
+      "id": "typort",
+      "aliases": ["typort", "typort"],
+      "extensions": [".typort"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "typort",
+      "scopeName": "source.typort",
+      "path": "./syntaxes/typort.tmLanguage.json"
+    }]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "update-vscode": "vscode-install",
+    "postinstall": "vscode-install"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/glob": "^7.1.1",
+    "@types/mocha": "^5.2.7",
+    "@types/node": "^12.11.7",
+    "@types/vscode": "^1.71.0",
+    "glob": "^7.1.5",
+    "mocha": "^6.2.3",
+    "typescript": "^5.1.3",
+    "tslint": "^5.20.0",
+    "vscode-test": "^1.2.2"
+  }
+}

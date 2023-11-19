@@ -267,6 +267,9 @@ impl<'a> FunctionTranslator<'a> {
                     ret = self.translate_stmt(stmt);
                 }
                 ret
+            },
+            Stmt::Func { name, params, return_type, block } => {
+                todo!()//TODO:
             }
         }
     }
