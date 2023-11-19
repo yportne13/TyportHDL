@@ -13,7 +13,7 @@
 		"keywords": {
 			"patterns": [{
 				"name": "keyword.control.typort",
-				"match": "\\b(if|while|for|return|object|class|match|def|import)\\b"
+				"match": "\\b(if|while|for|return|object|class|match|def|import|extends|else)\\b"
 			}]
 		},
 		"strings": {

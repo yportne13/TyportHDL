@@ -6,7 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+dashmap = "5.1.0"
 serde_json = "1.0.78"
 tokio = { version = "1.17.0", features = ["full"] }
 tower-lsp = { version = "0.19.0", features = ["proposed"]}
 serde = { version = "1.0", features = ["derive"] }
+
+typort-parser = { path="../typort-parser" }
+typort-interpreter = { path="../typort-interpreter" }

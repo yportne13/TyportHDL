@@ -55,7 +55,7 @@ pub struct Class {
     pub block: Vec<Stmt>,
 }
 
-pub fn hir_to_mir(from: Vec<crate::hir::Class<'_>>) -> Vec<Class> {
+pub fn hir_to_mir(from: Vec<crate::hir::Class>) -> Vec<Class> {
     from.into_iter()
         .map(|x| {
             let mut converter = MirConverter::new();
@@ -78,7 +78,7 @@ impl MirConverter {
             heap_idx: vec![0],
         }
     }
-    pub fn convert<'b>(&'_ mut self, from: crate::hir::Class<'b>) -> Class {
+    pub fn convert(&mut self, from: crate::hir::Class) -> Class {
         for p in from.args.iter() {
             self.rename.last_mut().unwrap().insert(p.0.data.to_string(), *self.rename_idx.last().unwrap());
             *self.rename_idx.last_mut().unwrap() += 1;
@@ -98,7 +98,7 @@ impl MirConverter {
             block: from.block.into_iter().map(|x| self.convert_stmt(x)).collect(),
         }
     }
-    fn convert_stmt<'b>(&'_ mut self, x: crate::hir::Stmt<'b>) -> Stmt {
+    fn convert_stmt(&mut self, x: crate::hir::Stmt) -> Stmt {
         match x {
             crate::hir::Stmt::Expr(e) => Stmt::Expr(self.convert_expr(e)),
             crate::hir::Stmt::Let(a, b) => {
@@ -108,7 +108,7 @@ impl MirConverter {
                 ret
             },
             crate::hir::Stmt::Assign(a, b) => {
-                let idx = self.rename.last().unwrap().get(a.data).unwrap();
+                let idx = self.rename.last().unwrap().get(&a.data).unwrap();
                 Stmt::Assign(a.map(|_| *idx), self.convert_expr(b))
             },
             crate::hir::Stmt::Return(e) => Stmt::Return(self.convert_expr(e)),
@@ -139,7 +139,7 @@ impl MirConverter {
             },
         }
     }
-    fn convert_expr<'b>(&'_ mut self, x: crate::hir::Expression<'b>) -> Expression {
+    fn convert_expr(&mut self, x: crate::hir::Expression) -> Expression {
         match x {
             crate::hir::Expression::Int(x) => Expression::Int(x),
             crate::hir::Expression::String(x) => {
@@ -149,7 +149,7 @@ impl MirConverter {
             },
             crate::hir::Expression::Bool(x) => Expression::Bool(x),
             crate::hir::Expression::Name(x) => {
-                let idx = self.rename.last().unwrap().get(x.data).unwrap();
+                let idx = self.rename.last().unwrap().get(&x.data).unwrap();
                 Expression::Name(x.map(|_| *idx))
             },
             crate::hir::Expression::Add(a, b) => {

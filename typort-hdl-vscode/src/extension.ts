@@ -12,8 +12,8 @@ function startServer() {
 	let typortls_binary_path: string | undefined = workspace.getConfiguration("typort-hdl").get("typort-lsp-Binary.path");
 	if (typeof typortls_binary_path === "undefined")	typortls_binary_path = "typort-lsp";
 	let serverOptions: ServerOptions = {
-		run: {command: typortls_binary_path},
-		debug: {command: typortls_binary_path},
+		run: {command: typortls_binary_path, args: ["lsp"]},
+		debug: {command: typortls_binary_path, args: ["lsp"]},
 	};
 
 	// Options to control the language client

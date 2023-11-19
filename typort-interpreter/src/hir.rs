@@ -3,56 +3,56 @@ use std::collections::HashMap;
 use crate::{Diagnostic, Span};
 
 #[derive(Debug, Clone)]
-pub enum Expression<'a> {
+pub enum Expression {
     Int(Span<i64>),
     String(Span<String>),
     Bool(bool),
-    Name(Span<&'a str>),
-    Add(Box<Expression<'a>>, Box<Expression<'a>>),
-    Sub(Box<Expression<'a>>, Box<Expression<'a>>),
-    Mul(Box<Expression<'a>>, Box<Expression<'a>>),
-    Div(Box<Expression<'a>>, Box<Expression<'a>>),
-    Eq(Box<Expression<'a>>, Box<Expression<'a>>),
-    Neq(Box<Expression<'a>>, Box<Expression<'a>>),
-    Call(Span<&'a str>, Vec<Expression<'a>>),
-    ObjCall(Span<&'a str>, Span<&'a str>, Vec<Expression<'a>>),
-    If(Box<Expression<'a>>, Vec<Stmt<'a>>, Option<Vec<Stmt<'a>>>),
+    Name(Span<String>),
+    Add(Box<Expression>, Box<Expression>),
+    Sub(Box<Expression>, Box<Expression>),
+    Mul(Box<Expression>, Box<Expression>),
+    Div(Box<Expression>, Box<Expression>),
+    Eq(Box<Expression>, Box<Expression>),
+    Neq(Box<Expression>, Box<Expression>),
+    Call(Span<String>, Vec<Expression>),
+    ObjCall(Span<String>, Span<String>, Vec<Expression>),
+    If(Box<Expression>, Vec<Stmt>, Option<Vec<Stmt>>),
 }
 
 #[derive(Debug, Clone)]
-pub struct Func<'a> {
-    pub name: Span<&'a str>,
-    pub params: Vec<(Span<&'a str>, Span<&'a str>)>,
-    pub return_type: Option<Span<&'a str>>,
-    pub block: Vec<Stmt<'a>>,
+pub struct Func {
+    pub name: Span<String>,
+    pub params: Vec<(Span<String>, Span<String>)>,
+    pub return_type: Option<Span<String>>,
+    pub block: Vec<Stmt>,
 }
 
 #[derive(Debug, Clone)]
-pub enum Stmt<'a> {
-    Expr(Expression<'a>),
-    Let(Span<&'a str>, Expression<'a>),
-    Assign(Span<&'a str>, Expression<'a>),
-    Return(Expression<'a>),
-    While(Expression<'a>, Vec<Stmt<'a>>),
-    Block(Vec<Stmt<'a>>),
+pub enum Stmt {
+    Expr(Expression),
+    Let(Span<String>, Expression),
+    Assign(Span<String>, Expression),
+    Return(Expression),
+    While(Expression, Vec<Stmt>),
+    Block(Vec<Stmt>),
     Func {
-        name: Span<&'a str>,
-        params: Vec<(Span<&'a str>, Span<&'a str>)>,
-        return_type: Option<Span<&'a str>>,
-        block: Vec<Stmt<'a>>,
+        name: Span<String>,
+        params: Vec<(Span<String>, Span<String>)>,
+        return_type: Option<Span<String>>,
+        block: Vec<Stmt>,
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Class<'a> {
+pub struct Class {
     //TODO: add type for object, class, case class, abstract class
-    pub name: Span<&'a str>,
-    pub args: Vec<(Span<&'a str>, Span<&'a str>)>,
-    pub extends: Option<Span<&'a str>>,
-    pub with: Vec<Span<&'a str>>,
-    //pub value: Vec<Span<&'a str>>,
+    pub name: Span<String>,
+    pub args: Vec<(Span<String>, Span<String>)>,
+    pub extends: Option<Span<String>>,
+    pub with: Vec<Span<String>>,
+    //pub value: Vec<Span<String>>,
     pub func: HashMap<String, usize>,
-    pub block: Vec<Stmt<'a>>,
+    pub block: Vec<Stmt>,
 }
 
 type Mutable = bool;
@@ -69,21 +69,21 @@ impl HirConverter {
     pub fn new() -> Self {
         HirConverter { values: vec![Default::default()], diag: vec![] }
     }
-    pub fn add_param<'b>(
+    pub fn add_param(
         &'_ mut self,
-        param: &'b [(
-            typort_parser::simple_example::Span<&'b str>,
-            typort_parser::simple_example::Span<&'b str>,
+        param: &[(
+            typort_parser::simple_example::Span<String>,
+            typort_parser::simple_example::Span<String>,
         )],
     ) {
         param.iter().for_each(|p| {
             self.values.last_mut().unwrap().insert(p.0.data.to_owned(), false);
         });
     }
-    pub fn convert_stmt<'b>(
-        &'_ mut self,
-        value: typort_parser::simple_example::Stmt<'b>,
-    ) -> Stmt<'b> {
+    pub fn convert_stmt(
+        &mut self,
+        value: typort_parser::simple_example::Stmt,
+    ) -> Stmt {
         match value {
             typort_parser::simple_example::Stmt::Expr(e) => Stmt::Expr(self.convert_expr(e)),
             typort_parser::simple_example::Stmt::Val(a, b) => {
@@ -105,7 +105,7 @@ impl HirConverter {
                 Stmt::Let(a.into(), self.convert_expr(b))
             }
             typort_parser::simple_example::Stmt::Assign(a, b) => {
-                if let Some(mutable) = self.values.last().unwrap().get(a.data) {
+                if let Some(mutable) = self.values.last().unwrap().get(&a.data) {
                     if !mutable {
                         self.diag.push(Diagnostic {
                             msg: format!("\"{}\" is immutable", a.data),
@@ -177,16 +177,16 @@ impl HirConverter {
             }
         }
     }
-    pub fn convert_expr<'b>(
-        &'_ mut self,
-        value: typort_parser::simple_example::Expression<'b>,
-    ) -> Expression<'b> {
+    pub fn convert_expr(
+        &mut self,
+        value: typort_parser::simple_example::Expression,
+    ) -> Expression {
         match value {
             typort_parser::simple_example::Expression::Int(x) => Expression::Int(x.into()),
             typort_parser::simple_example::Expression::String(x) => Expression::String(x.into()),
             typort_parser::simple_example::Expression::Bool(x) => Expression::Bool(x),
             typort_parser::simple_example::Expression::Name(x) => {
-                if !self.values.last().unwrap().contains_key(x.data) {
+                if !self.values.last().unwrap().contains_key(&x.data) {
                     self.diag.push(Diagnostic {
                         msg: format!("use of undeclared value {}", x.data),
                         range: x.range,
@@ -194,8 +194,8 @@ impl HirConverter {
                 }
                 Expression::Name(x.into())
             }
-            typort_parser::simple_example::Expression::ObjVal(a, b) => {
-                if !self.values.last().unwrap().contains_key(a.data) {
+            typort_parser::simple_example::Expression::ObjVal(a, _type) => {
+                if !self.values.last().unwrap().contains_key(&a.data) {
                     self.diag.push(Diagnostic {
                         msg: format!("use of undeclared value {}", a.data),
                         range: a.range,
@@ -228,10 +228,10 @@ impl HirConverter {
                 Box::new(self.convert_expr(*b)),
             ),
             typort_parser::simple_example::Expression::Call(a, b) => {
-                if self.values.last().unwrap().contains_key(a.data) {
+                if self.values.last().unwrap().contains_key(&a.data) {
                     Expression::ObjCall(
                         a.into(),
-                        Span { data: "apply" },
+                        Span { data: "apply".to_owned() },
                         b.into_iter().map(|x| self.convert_expr(x)).collect(),
                     )
                 } else {
@@ -255,7 +255,7 @@ impl HirConverter {
     }
 }
 
-pub fn parse_to_hir(from: Vec<typort_parser::simple_example::TopItem<'_>>) -> Vec<Class<'_>> {
+pub fn parse_to_hir(from: Vec<typort_parser::simple_example::TopItem>) -> Vec<Class> {
     from.into_iter()
         .map(|x| {
             let mut converter = HirConverter::new();

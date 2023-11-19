@@ -9,8 +9,8 @@ pub mod simple_example {
 
     pub use macro_parser_combinator::Span;
 
-    pub fn name<'a>() -> Parser!(Span<&'a str>) {
-        fn f(input: &str, loc: Location) -> (Option<Span<&str>>, &str, Location) {
+    pub fn name<'a>() -> Parser!(Span<String>) {
+        fn f(input: &str, loc: Location) -> (Option<Span<String>>, &str, Location) {
             let mut a = input.bytes();
             let mut len = 0;
             if let Some(x) = a.next() {
@@ -34,7 +34,7 @@ pub mod simple_example {
                 }
             }
             let ret = Span {
-                data: unsafe { input.get_unchecked(..len) },
+                data: unsafe { input.get_unchecked(..len) }.to_owned(),
                 offset: loc.offset,
                 range: ((loc.line, loc.col), (loc.line, loc.col + len)),
                 len,
@@ -117,77 +117,77 @@ pub mod simple_example {
 
 
     #[derive(Debug, Clone)]
-    pub enum Expression<'a> {
+    pub enum Expression {
         Int(Span<i64>),
         String(Span<String>),
         Bool(bool),
-        Name(Span<&'a str>),
-        ObjVal(Span<&'a str>, Span<&'a str>),
-        Add(Box<Expression<'a>>, Box<Expression<'a>>),
-        Sub(Box<Expression<'a>>, Box<Expression<'a>>),
-        Mul(Box<Expression<'a>>, Box<Expression<'a>>),
-        Div(Box<Expression<'a>>, Box<Expression<'a>>),
-        Eq(Box<Expression<'a>>, Box<Expression<'a>>),
-        Neq(Box<Expression<'a>>, Box<Expression<'a>>),
-        Call(Span<&'a str>, Vec<Expression<'a>>),
-        ObjCall(Span<&'a str>, Span<&'a str>, Vec<Expression<'a>>),
-        If(Box<Expression<'a>>, Block<'a>, Option<Block<'a>>),
+        Name(Span<String>),
+        ObjVal(Span<String>, Span<String>),
+        Add(Box<Expression>, Box<Expression>),
+        Sub(Box<Expression>, Box<Expression>),
+        Mul(Box<Expression>, Box<Expression>),
+        Div(Box<Expression>, Box<Expression>),
+        Eq(Box<Expression>, Box<Expression>),
+        Neq(Box<Expression>, Box<Expression>),
+        Call(Span<String>, Vec<Expression>),
+        ObjCall(Span<String>, Span<String>, Vec<Expression>),
+        If(Box<Expression>, Block, Option<Block>),
     }
 
     #[derive(Debug, Clone)]
-    pub struct Func<'a> {
-        pub name: Span<&'a str>,
-        pub params: Vec<(Span<&'a str>, Span<&'a str>)>,
-        pub return_type: Option<Span<&'a str>>,
-        pub block: Block<'a>,
+    pub struct Func {
+        pub name: Span<String>,
+        pub params: Vec<(Span<String>, Span<String>)>,
+        pub return_type: Option<Span<String>>,
+        pub block: Block,
     }
 
     #[derive(Debug, Clone)]
-    pub struct Block<'a>(pub Vec<Stmt<'a>>);
+    pub struct Block(pub Vec<Stmt>);
 
     #[derive(Debug, Clone)]
-    pub struct Object<'a> {
-        pub name: Span<&'a str>,
-        pub extends: Option<Span<&'a str>>,
-        pub with: Vec<Span<&'a str>>,
-        pub block: Block<'a>,
+    pub struct Object {
+        pub name: Span<String>,
+        pub extends: Option<Span<String>>,
+        pub with: Vec<Span<String>>,
+        pub block: Block,
     }
 
     #[derive(Debug, Clone)]
-    pub struct Class<'a> {
-        pub name: Span<&'a str>,
-        pub args: Vec<(Span<&'a str>, Span<&'a str>)>,
-        pub extends: Option<Span<&'a str>>,
-        pub with: Vec<Span<&'a str>>,
-        pub block: Block<'a>,
+    pub struct Class {
+        pub name: Span<String>,
+        pub args: Vec<(Span<String>, Span<String>)>,
+        pub extends: Option<Span<String>>,
+        pub with: Vec<Span<String>>,
+        pub block: Block,
     }
 
     #[derive(Debug, Clone)]
-    pub enum TopItem<'a> {
-        Class(Class<'a>),
-        Object(Object<'a>),
+    pub enum TopItem {
+        Class(Class),
+        Object(Object),
     }
 
     #[derive(Debug, Clone)]
-    pub enum Stmt<'a> {
-        Expr(Expression<'a>),
-        Val(Span<&'a str>, Expression<'a>),
-        Var(Span<&'a str>, Expression<'a>),
-        Assign(Span<&'a str>, Expression<'a>),
-        Return(Expression<'a>),
-        For(Span<&'a str>, Expression<'a>, Expression<'a>, Block<'a>),
-        While(Expression<'a>, Block<'a>),
-        Func(Func<'a>),
+    pub enum Stmt {
+        Expr(Expression),
+        Val(Span<String>, Expression),
+        Var(Span<String>, Expression),
+        Assign(Span<String>, Expression),
+        Return(Expression),
+        For(Span<String>, Expression, Expression, Block),
+        While(Expression, Block),
+        Func(Func),
     }
 
     parser! {
 
-        file: Vec<TopItem<'a>> = whitespace >> {
+        file: Vec<TopItem> = whitespace >> {
             object -> (TopItem::Object)
             | class -> (TopItem::Class)
         }
 
-        object: Object<'a> = (("object" >> name) * ["extends" >> name] * {"with" >> name} * block)
+        object: Object = (("object" >> name) * ["extends" >> name] * {"with" >> name} * block)
             -> (|(((name, extends), with), block)| {
                 Object {
                     name,
@@ -197,7 +197,7 @@ pub mod simple_example {
                 }
             })
 
-        class: Class<'a> = (("class" >> name) * [param_list] * ["extends" >> name] * {"with" >> name} * block)
+        class: Class = (("class" >> name) * [param_list] * ["extends" >> name] * {"with" >> name} * block)
             -> (|((((name, args), extends), with), block)| {
                 Class {
                     name,
@@ -208,7 +208,7 @@ pub mod simple_example {
                 }
             })
 
-        func: Func<'a> = ("def" >> name * param_list * [":" >> type_expr << ["="]] * block)
+        func: Func = ("def" >> name * param_list * [":" >> type_expr << ["="]] * block)
             -> (|(((name, params), return_type), block)| Func {
                 name,
                 params,
@@ -216,15 +216,15 @@ pub mod simple_example {
                 block,
             })
 
-        param_list: Vec<(Span<&'a str>, Span<&'a str>)> = "(" >> {param(",")} << [","] << ")"
+        param_list: Vec<(Span<String>, Span<String>)> = "(" >> {param(",")} << [","] << ")"
 
-        param: (Span<&'a str>, Span<&'a str>) = (name << ":") * type_expr
+        param: (Span<String>, Span<String>) = (name << ":") * type_expr
 
-        type_expr: Span<&'a str> = name
+        type_expr: Span<String> = name
 
-        block: Block<'a> = "{" >> {stmt} -> (Block) << "}"
+        block: Block = "{" >> {stmt} -> (Block) << "}"
 
-        stmt: Stmt<'a> = stmt_let
+        stmt: Stmt = stmt_let
             | func -> (Stmt::Func)
             | stmt_return
             | stmt_while
@@ -232,52 +232,52 @@ pub mod simple_example {
             | stmt_assign
             | stmt_expr
 
-        stmt_expr: Stmt<'a> = expr -> (Stmt::Expr)
+        stmt_expr: Stmt = expr -> (Stmt::Expr)
 
-        stmt_let: Stmt<'a> = (("val" >> name << "=") * expr) -> (|(a, b)| Stmt::Val(a, b))
+        stmt_let: Stmt = (("val" >> name << "=") * expr) -> (|(a, b)| Stmt::Val(a, b))
             | (("var" >> name << "=") * expr) -> (|(a, b)| Stmt::Var(a, b))
 
-        stmt_assign: Stmt<'a> = ((name << "=") * expr) -> (|(a, b)| Stmt::Assign(a, b))
+        stmt_assign: Stmt = ((name << "=") * expr) -> (|(a, b)| Stmt::Assign(a, b))
 
-        stmt_return: Stmt<'a> = "return" >> expr -> (Stmt::Return)
+        stmt_return: Stmt = "return" >> expr -> (Stmt::Return)
 
-        stmt_for: Stmt<'a> = ("for" >> ("(" >> (name << "<-") * (expr << "until") * (expr << ")")) * block)
+        stmt_for: Stmt = ("for" >> ("(" >> (name << "<-") * (expr << "until") * (expr << ")")) * block)
             -> (|(((n, from), to), b)| Stmt::For(n, from, to, b))
 
-        stmt_while: Stmt<'a> = ("while" >> ("(" >> expr << ")") * block) -> (|(cond, b)| Stmt::While(cond, b))
+        stmt_while: Stmt = ("while" >> ("(" >> expr << ")") * block) -> (|(cond, b)| Stmt::While(cond, b))
 
-        expr: Expression<'a> = expr_binary
+        expr: Expression = expr_binary
 
-        expr_base1: Expression<'a> = expr_literal
+        expr_base1: Expression = expr_literal
             | expr_if
             | expr_name
             | expr_paren
 
-        expr_if: Expression<'a> = ("if" >> expr * block * ["else" >> block])
+        expr_if: Expression = ("if" >> expr * block * ["else" >> block])
             -> (|((cond, a), b)| Expression::If(Box::new(cond), a, b))
 
-        expr_base: Expression<'a> = expr_call
+        expr_base: Expression = expr_call
 
-        expr_literal: Expression<'a> = int -> (Expression::Int)
+        expr_literal: Expression = int -> (Expression::Int)
             | escaped_quoted_span -> (Expression::String)
             | "true" -> (|_| Expression::Bool(true))
             | "false" -> (|_| Expression::Bool(false))
 
-        expr_obj_item: Expression<'a> = ((name << ".") * name * [arg_list]) -> (|((a, b), args)| if let Some(args) = args {
+        expr_obj_item: Expression = ((name << ".") * name * [arg_list]) -> (|((a, b), args)| if let Some(args) = args {
             Expression::ObjCall(a, b, args)
         }else {
             Expression::ObjVal(a, b)
         })
 
-        expr_name: Expression<'a> = (name * [arg_list]) -> (|(a, b)| if let Some(args) = b {
+        expr_name: Expression = (name * [arg_list]) -> (|(a, b)| if let Some(args) = b {
                     Expression::Call(a, args)
                 }else {
                     Expression::Name(a)
                 })
 
-        expr_paren: Expression<'a> = "(" >> expr << ")"
+        expr_paren: Expression = "(" >> expr << ")"
 
-        expr_binary: Expression<'a> = (expr_binary1 * [("+" | "-") * expr])
+        expr_binary: Expression = (expr_binary1 * [("+" | "-") * expr])
             -> (|(e1, r)| {
                 if let Some((op, e2)) = r {
                     if op == "+" {Expression::Add(Box::new(e1), Box::new(e2))}
@@ -287,7 +287,7 @@ pub mod simple_example {
                 }
             })
 
-        expr_binary1: Expression<'a> = (expr_binary0 * [("*" | "/") * expr])
+        expr_binary1: Expression = (expr_binary0 * [("*" | "/") * expr])
             -> (|(e1, r)| {
                 if let Some((op, e2)) = r {
                     if op == "*" {Expression::Mul(Box::new(e1), Box::new(e2))}
@@ -297,7 +297,7 @@ pub mod simple_example {
                 }
             })
     
-        expr_binary0: Expression<'a> = (expr_base * [("==" | "!=") * expr])
+        expr_binary0: Expression = (expr_base * [("==" | "!=") * expr])
             -> (|(e1, r)| {
                 if let Some((op, e2)) = r {
                     if op == "==" {Expression::Eq(Box::new(e1), Box::new(e2))}
@@ -307,11 +307,11 @@ pub mod simple_example {
                 }
             })
 
-        expr_call: Expression<'a> = expr_base1
+        expr_call: Expression = expr_base1
 
-        arg_list: Vec<Expression<'a>> = "(" >> {arg(",")} << [","] << ")"
+        arg_list: Vec<Expression> = "(" >> {arg(",")} << [","] << ")"
 
-        arg: Expression<'a> = expr
+        arg: Expression = expr
 
     }
 
