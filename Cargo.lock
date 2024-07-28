@@ -29,15 +29,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aho-corasick"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6748e8def348ed4d14996fa801f4122cd763fff530258cdc03f64b25f89d3a5a"
-dependencies = [
- "memchr",
-]
-
-[[package]]
 name = "anstream"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -538,12 +529,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af150ab688ff2122fcef229be89cb50dd66af9e01a4ff320cc137eecc9bacc38"
 
 [[package]]
-name = "lazy_static"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
-
-[[package]]
 name = "libc"
 version = "0.2.147"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -585,36 +570,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b823e83b2affd8f40a9ee8c29dbc56404c1e34cd2710921f2801e2cf29527afa"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "macro_parser_combinator"
-version = "0.1.0"
-source = "git+https://github.com/yportne13/macro_parser_combinator.git?branch=LazyError#b9a9105e1f652dba16ad95bca69218d113d826a5"
-dependencies = [
- "macro_parser_combinator_core",
- "macro_parser_combinator_macro",
- "regex",
-]
-
-[[package]]
-name = "macro_parser_combinator_core"
-version = "0.1.0"
-source = "git+https://github.com/yportne13/macro_parser_combinator.git?branch=LazyError#b9a9105e1f652dba16ad95bca69218d113d826a5"
-dependencies = [
- "lazy_static",
- "regex",
-]
-
-[[package]]
-name = "macro_parser_combinator_macro"
-version = "0.1.0"
-source = "git+https://github.com/yportne13/macro_parser_combinator.git?branch=LazyError#b9a9105e1f652dba16ad95bca69218d113d826a5"
-dependencies = [
- "macro_parser_combinator_core",
- "quote",
- "regex",
- "syn 2.0.29",
 ]
 
 [[package]]
@@ -792,35 +747,6 @@ dependencies = [
  "slice-group-by",
  "smallvec",
 ]
-
-[[package]]
-name = "regex"
-version = "1.9.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12de2eff854e5fa4b1295edd650e227e9d8fb0c9e90b12e7f36d6a6811791a29"
-dependencies = [
- "aho-corasick",
- "memchr",
- "regex-automata",
- "regex-syntax",
-]
-
-[[package]]
-name = "regex-automata"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49530408a136e16e5b486e883fbb6ba058e8e4e8ae6621a77b048b314336e629"
-dependencies = [
- "aho-corasick",
- "memchr",
- "regex-syntax",
-]
-
-[[package]]
-name = "regex-syntax"
-version = "0.7.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbb5fb1acd8a1a18b3dd5be62d25485eb770e05afb408a9627d14d451bae12da"
 
 [[package]]
 name = "region"
@@ -1139,6 +1065,7 @@ dependencies = [
  "tokio",
  "typort-interpreter",
  "typort-lsp",
+ "typort-parser",
 ]
 
 [[package]]
@@ -1168,9 +1095,6 @@ dependencies = [
 [[package]]
 name = "typort-parser"
 version = "0.1.0"
-dependencies = [
- "macro_parser_combinator",
-]
 
 [[package]]
 name = "unicode-bidi"
