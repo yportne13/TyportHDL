@@ -18,7 +18,7 @@ pub fn type_param(p: &mut Parser) {
     }
     p.expect(RSquare);
 
-    p.close(m, ParamList);
+    p.close(m, TypeParam);
 }
 
 fn param(p: &mut Parser) {

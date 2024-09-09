@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 typort-parser = { path = "../typort-parser" }
 
-cranelift = "0.97.1"
-cranelift-module = "0.97.1"
-cranelift-jit = "0.97.1"
-cranelift-native = "0.97.1"
+#cranelift = "0.97.1"
+#cranelift-module = "0.97.1"
+#cranelift-jit = "0.97.1"
+#cranelift-native = "0.97.1"

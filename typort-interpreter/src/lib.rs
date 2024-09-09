@@ -2,35 +2,10 @@ pub mod hir;
 pub mod mir;
 mod built_in;
 mod ty;
-//mod jit;
 mod vm;
 use hir::parse_to_hir;
 use mir::hir_to_mir;
-//use typort_parser::simple_example::*;
-use core::mem;
 use std::path::Path;
-
-#[derive(Debug, Clone)]
-pub struct Span<T> {
-    pub data: T,
-}
-
-impl<T> Span<T> {
-    pub fn map<F, O>(self, f: F) -> Span<O>
-    where
-        F: Fn(T) -> O
-    {
-        Span {
-            data: f(self.data)
-        }
-    }
-}
-
-impl<T> From<typort_parser::simple_example::Span<T>> for Span<T> {
-    fn from(value: typort_parser::simple_example::Span<T>) -> Self {
-        Span { data: value.data }
-    }
-}
 
 type Line = usize;
 type Col = usize;
@@ -62,7 +37,7 @@ pub fn main_cli(path: &Path, top: Option<String>) {
 }*/
 
 fn run_code_vm(code: &str, top: Option<String>) -> Result<vm::Value, String> {
-    let (ast, parse_fail, _) = typort_parser::simple_example::file().run_with_out(code, Default::default());
+    let (ast, parse_fail) = typort_parser::parse(code, Default::default());
     if !parse_fail.is_empty() {
         println!("parse fail at {:?}", parse_fail);
     }

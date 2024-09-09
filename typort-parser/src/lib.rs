@@ -6,7 +6,7 @@ use crate::expr::expr;
 use crate::lex::lex;
 use crate::types::type_param;
 
-use combinator::Span;
+pub use combinator::Span;
 
 mod class;
 mod combinator;
@@ -64,6 +64,7 @@ pub enum TreeKind {
     File,
     Fn,
     TypeExpr,
+    TypeParam,
     ParamList,
     Param,
     Block,
@@ -80,11 +81,59 @@ pub enum TreeKind {
 }
 
 pub struct Tree<'a> {
-    kind: TreeKind,
-    children: Vec<Child<'a>>,
+    pub kind: TreeKind,
+    pub children: Vec<Child<'a>>,
 }
 
-enum Child<'a> {
+impl<'a> TryFrom<&Tree<'a>> for Span<'a, ()> {    
+    type Error = ();
+    
+    fn try_from(value: &Tree<'a>) -> Result<Self, Self::Error> {
+        match (value.start_offset(), value.end_offset(), value.path()) {
+            (Some(start), Some(end), Some(path)) => Ok(Span {
+                data: (),
+                start_offset: start,
+                end_offset: end,
+                path,
+            }),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<&Child<'a>> for Span<'a, ()> {    
+    type Error = ();
+    
+    fn try_from(value: &Child<'a>) -> Result<Self, Self::Error> {
+        match value {
+            Child::Token(t) => Ok(t.map(|_| ())),
+            Child::Tree(t) => t.try_into(),
+        }
+    }
+}
+
+impl<'a> Tree<'a> {
+    pub fn start_offset(&self) -> Option<u32> {
+        self.children.first().and_then(|child| match child {
+            Child::Token(t) => Some(t.start_offset),
+            Child::Tree(t) => t.start_offset(),
+        })
+    }
+    pub fn end_offset(&self) -> Option<u32> {
+        self.children.last().and_then(|child| match child {
+            Child::Token(t) => Some(t.end_offset),
+            Child::Tree(t) => t.end_offset(),
+        })
+    }
+    pub fn path(&self) -> Option<&'a Path> {
+        self.children.first().and_then(|child| match child {
+            Child::Token(t) => Some(t.path),
+            Child::Tree(t) => t.path(),
+        })
+    }
+}
+
+pub enum Child<'a> {
     Token(Token<'a>),
     Tree(Tree<'a>),
 }
