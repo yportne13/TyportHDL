@@ -7,6 +7,9 @@ use crate::lex::lex;
 use crate::types::type_param;
 
 pub use combinator::Span;
+use combinator::{maybe, Maybe, Parser};
+use expr::Expr;
+use lex::TokenNode;
 
 mod class;
 mod combinator;
@@ -39,6 +42,7 @@ pub enum TokenKind {
     Semi,
     Comma,
     Colon,
+    Dot,
     Arrow,
     Plus,
     Minus,
@@ -58,291 +62,320 @@ pub enum TokenKind {
 
 pub type Token<'a> = Span<'a, (&'a str, TokenKind)>;
 
-#[derive(Debug, Clone, Copy)]
-pub enum TreeKind {
-    ErrorTree,
-    File,
-    Fn,
+#[derive(Clone, Copy, Debug)]
+pub enum Expect {
+    Ident,
+    Eq,
+    In,
+    Then,
+    Else,
+    Arrow,
+    Term,
+    Colon,
+    LParen,
+    RParen,
+    LSquare,
+    RSquare,
+    LCurly,
+    RCurly,
     TypeExpr,
-    TypeParam,
-    ParamList,
-    Param,
-    Block,
-    StmtLet,
-    StmtReturn,
-    StmtExpr,
-    ExprLiteral,
-    ExprName,
-    ExprParen,
-    ExprBinary,
-    ExprCall,
-    ArgList,
-    Arg,
-}
-
-pub struct Tree<'a> {
-    pub kind: TreeKind,
-    pub children: Vec<Child<'a>>,
-}
-
-impl<'a> TryFrom<&Tree<'a>> for Span<'a, ()> {    
-    type Error = ();
-    
-    fn try_from(value: &Tree<'a>) -> Result<Self, Self::Error> {
-        match (value.start_offset(), value.end_offset(), value.path()) {
-            (Some(start), Some(end), Some(path)) => Ok(Span {
-                data: (),
-                start_offset: start,
-                end_offset: end,
-                path,
-            }),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<&Child<'a>> for Span<'a, ()> {    
-    type Error = ();
-    
-    fn try_from(value: &Child<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Child::Token(t) => Ok(t.map(|_| ())),
-            Child::Tree(t) => t.try_into(),
-        }
-    }
-}
-
-impl<'a> Tree<'a> {
-    pub fn start_offset(&self) -> Option<u32> {
-        self.children.first().and_then(|child| match child {
-            Child::Token(t) => Some(t.start_offset),
-            Child::Tree(t) => t.start_offset(),
-        })
-    }
-    pub fn end_offset(&self) -> Option<u32> {
-        self.children.last().and_then(|child| match child {
-            Child::Token(t) => Some(t.end_offset),
-            Child::Tree(t) => t.end_offset(),
-        })
-    }
-    pub fn path(&self) -> Option<&'a Path> {
-        self.children.first().and_then(|child| match child {
-            Child::Token(t) => Some(t.path),
-            Child::Tree(t) => t.path(),
-        })
-    }
-}
-
-pub enum Child<'a> {
-    Token(Token<'a>),
-    Tree(Tree<'a>),
-}
-
-#[macro_export]
-macro_rules! format_to {
-    ($buf:expr) => ();
-    ($buf:expr, $lit:literal $($arg:tt)*) => {
-        { use ::std::fmt::Write as _; let _ = ::std::write!($buf, $lit $($arg)*); }
-    };
-}
-
-impl<'a> Tree<'a> {
-    fn print(&self, buf: &mut String, level: usize) {
-        let indent = "  ".repeat(level);
-        format_to!(buf, "{indent}{:?}\n", self.kind);
-        for child in &self.children {
-            match child {
-                Child::Token(token) => {
-                    format_to!(
-                        buf,
-                        "{indent}  '{}' @ {}:{}\n",
-                        token.data.0,
-                        token.start_offset,
-                        token.end_offset
-                    )
-                }
-                Child::Tree(tree) => tree.print(buf, level + 1),
-            }
-        }
-        assert!(buf.ends_with('\n'));
-    }
-}
-
-impl<'a> fmt::Debug for Tree<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut buf = String::new();
-        self.print(&mut buf, 0);
-        write!(f, "{}", buf)
-    }
-}
-
-#[derive(Debug)]
-enum Event {
-    Open { kind: TreeKind },
-    Close,
-    Advance,
-}
-
-struct MarkOpened {
-    index: usize,
-}
-
-struct MarkClosed {
-    index: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum ErrKind {
-    TokenKind(TokenKind),
-    TreeKind(TreeKind),
+    Expr,
     Stmt,
-    TypeExpr,
+    ArgList,
+    Param,
 }
 
-type PError<'a> = Span<'a, ErrKind>;
-
-struct Parser<'a> {
-    tokens: Vec<Token<'a>>,
-    pos: usize,
-    fuel: Cell<u32>,
-    events: Vec<Event>,
-    err: Vec<PError<'a>>,
+#[derive(Clone, Debug)]
+pub enum Stmt<'a> {
+    Return(Span<'a, ()>, Expr<'a>),
+    Val {
+        val: Span<'a, ()>,
+        ident: Maybe<'a, Span<'a, String>, Expect>,
+        eq: Maybe<'a, Span<'a, ()>, Expect>,
+        expr: Maybe<'a, Expr<'a>, Expect>,
+    },
+    Expr(Expr<'a>),
 }
 
-impl<'a> Parser<'a> {
-    fn new(tokens: Vec<Token>) -> Parser {
-        Parser {
-            tokens,
-            pos: 0,
-            fuel: Cell::new(256),
-            events: Vec::new(),
-            err: vec![],
-        }
-    }
+#[derive(Clone, Debug)]
+pub enum Term<'a> {
+    Lit(Span<'a, i32>),
+    Bool(Span<'a, bool>),
+    Var(Span<'a, String>),
+    //Paren(Box<Term>),
+    Lam {
+        fun: Span<'a, ()>,
+        ident: Maybe<'a, Span<'a, String>, Expect>,
+        arrow: Maybe<'a, Span<'a, ()>, Expect>,
+        term: Box<Maybe<'a, Term<'a>, Expect>>,
+    },
+    App(Box<Term<'a>>, Box<Term<'a>>),
+    Rcd {
+        left: Span<'a, ()>,
+        data: Vec<(Span<'a, String>, Span<'a, ()>, Term<'a>)>,
+        right: Span<'a, ()>,
+    },
+    Sel(Box<Term<'a>>, Span<'a, String>),
+    Let {
+        keyword: Span<'a, ()>,
+        name: Maybe<'a, Span<'a, String>, Expect>,
+        rhs: Box<Maybe<'a, Term<'a>, Expect>>,
+    },
+    IfExpr {
+        if_kw: Span<'a, ()>,
+        lparen: Maybe<'a, Span<'a, ()>, Expect>,
+        cond: Box<Maybe<'a, Term<'a>, Expect>>,
+        rparen: Maybe<'a, Span<'a, ()>, Expect>,
+        rhs1: Box<Maybe<'a, Term<'a>, Expect>>,
+        else_kw: Maybe<'a, Span<'a, ()>, Expect>,
+        rhs2: Box<Maybe<'a, Term<'a>, Expect>>,
+    },
+}
 
-    fn build_tree(self) -> (Tree<'a>, Vec<PError<'a>>) {
-        let mut tokens = self.tokens.into_iter();
-        let mut events = self.events;
+pub enum Type<'a> {
+    Top,
+    Bot,
+    Union {
+        lhs: Box<Type<'a>>,
+        rhs: Box<Type<'a>>,
+    },
+    Inter {
+        lhs: Box<Type<'a>>,
+        rhs: Box<Type<'a>>,
+    },
+    Fun {
+        arg: Box<Type<'a>>,
+        ret: Box<Type<'a>>,
+    },
+    Record {
+        fields: Vec<(String, Type<'a>)>,
+    },
+    Recursive {
+        uv: TypeVariable<'a>,
+        body: Box<Type<'a>>,
+    },
+    Primitive {
+        name: Span<'a, String>,
+    },
+    Variable(TypeVariable<'a>),
+}
 
-        assert!(matches!(events.pop(), Some(Event::Close)));
-        let mut stack = Vec::new();
-        for event in events {
-            match event {
-                Event::Open { kind } => stack.push(Tree {
-                    kind,
-                    children: Vec::new(),
-                }),
-                Event::Close => {
-                    let tree = stack.pop().unwrap();
-                    stack.last_mut().unwrap().children.push(Child::Tree(tree));
-                }
-                Event::Advance => {
-                    let token = tokens.next().unwrap();
-                    stack.last_mut().unwrap().children.push(Child::Token(token));
-                }
-            }
-        }
+pub struct TypeVariable<'a> {
+    name_hint: Span<'a, String>,
+    hash: Span<'a, i32>,
+}
 
-        let tree = stack.pop().unwrap();
-        assert!(stack.is_empty());
-        assert!(tokens.next().is_none());
-        (tree, self.err)
-    }
+#[derive(Debug, Clone)]
+pub struct Paren<'a, T> {
+    lparen: Span<'a, ()>,
+    data: Maybe<'a, T, Expect>,
+    rparen: Maybe<'a, Span<'a, ()>, Expect>,
+}
 
-    fn open(&mut self) -> MarkOpened {
-        let mark = MarkOpened {
-            index: self.events.len(),
-        };
-        self.events.push(Event::Open {
-            kind: TreeKind::ErrorTree,
-        });
-        mark
-    }
+#[derive(Debug, Clone)]
+pub struct Square<'a, T> {
+    lbracket: Span<'a, ()>,
+    data: Maybe<'a, T, Expect>,
+    rbracket: Maybe<'a, Span<'a, ()>, Expect>,
+}
 
-    fn open_before(&mut self, m: MarkClosed) -> MarkOpened {
-        let mark = MarkOpened { index: m.index };
-        self.events.insert(
-            m.index,
-            Event::Open {
-                kind: TreeKind::ErrorTree,
-            },
-        );
-        mark
-    }
+#[derive(Clone, Debug)]
+pub struct Brace<'a, T> {
+    lbrace: Span<'a, ()>,
+    data: Maybe<'a, T, Expect>,
+    rbrace: Maybe<'a, Span<'a, ()>, Expect>,
+}
 
-    fn close(&mut self, m: MarkOpened, kind: TreeKind) -> MarkClosed {
-        self.events[m.index] = Event::Open { kind };
-        self.events.push(Event::Close);
-        MarkClosed { index: m.index }
-    }
-
-    fn advance(&mut self) {
-        assert!(!self.eof());
-        self.fuel.set(256);
-        self.events.push(Event::Advance);
-        self.pos += 1;
-    }
-
-    fn advance_with_error(&mut self, error: ErrKind) {
-        let m = self.open();
-        self.err.push(
-            self.tokens
-                .get(self.pos)
-                .unwrap_or_else(|| self.tokens.get(self.pos - 1).unwrap())
-                .map(|_| error));
-        self.advance();
-        self.close(m, ErrorTree);
-    }
-
-    fn eof(&self) -> bool {
-        self.pos == self.tokens.len()
-    }
-
-    fn nth(&self, lookahead: usize) -> TokenKind {
-        if self.fuel.get() == 0 {
-            panic!("parser is stuck")
-        }
-        self.fuel.set(self.fuel.get() - 1);
-        self.tokens
-            .get(self.pos + lookahead)
-            .map_or(TokenKind::Eof, |it| it.data.1)
-    }
-
-    fn at(&self, kind: TokenKind) -> bool {
-        self.nth(0) == kind
-    }
-
-    fn at_any(&self, kinds: &[TokenKind]) -> bool {
-        kinds.contains(&self.nth(0))
-    }
-
-    fn eat(&mut self, kind: TokenKind) -> bool {
-        if self.at(kind) {
-            self.advance();
-            true
-        } else {
-            false
-        }
-    }
-
-    fn expect(&mut self, kind: TokenKind) {
-        if self.eat(kind) {
-            return;
-        }
-        self.err.push(
-            self.tokens
-                .get(self.pos)
-                .unwrap_or_else(|| self.tokens.get(self.pos - 1).unwrap())
-                .map(|_| ErrKind::TokenKind(kind))
-        );
+fn kw<'a, 'b: 'a>(p: TokenKind) -> impl Parser<&'a [TokenNode<'b>], Span<'a, ()>> {
+    move |input: &'a [TokenNode<'b>]| match input.first() {
+        Some(x) if x.data.1 == p => input.get(1..).map(|i| (i, x.map(|_| ()))),
+        _ => None,
     }
 }
 
-use expr::stmt_expr;
-use types::type_expr;
+fn string<'a>(p: TokenKind) -> impl Parser<&'a [TokenNode<'a>], Span<'a, String>> {
+    move |input: &'a [TokenNode<'a>]| match input.first() {
+        Some(x) if x.data.1 == p => input.get(1..).map(|i| (i, x.map(|s| s.0.to_owned()))),
+        _ => None,
+    }
+}
+
+fn paren<'a, P, O>(p: P, expect: Expect) -> impl Parser<&'a [TokenNode<'a>], Paren<'a, O>>
+where
+    P: Parser<&'a [TokenNode<'a>], O>,
+{
+    kw(TokenKind::LParen)
+        .with(maybe(p, expect))
+        .with(maybe(kw(TokenKind::RParen), Expect::RParen))
+        .map(|x| Paren {
+            lparen: x.0 .0,
+            data: x.0 .1,
+            rparen: x.1,
+        })
+}
+
+fn square<'a, P, O>(p: P, expect: Expect) -> impl Parser<&'a [TokenNode<'a>], Square<'a, O>>
+where
+    P: Parser<&'a [TokenNode<'a>], O>,
+{
+    kw(TokenKind::LSquare)
+        .with(maybe(p, expect))
+        .with(maybe(kw(TokenKind::RSquare), Expect::RSquare))
+        .map(|x| Square {
+            lbracket: x.0 .0,
+            data: x.0 .1,
+            rbracket: x.1,
+        })
+}
+
+fn brace<'a, P, O>(p: P, expect: Expect) -> impl Parser<&'a [TokenNode<'a>], Brace<'a, O>>
+where
+    P: Parser<&'a [TokenNode<'a>], O>,
+{
+    kw(TokenKind::LCurly)
+        .with(maybe(p, expect))
+        .with(maybe(kw(TokenKind::RCurly), Expect::RCurly))
+        .map(|x| Brace {
+            lbrace: x.0 .0,
+            data: x.0 .1,
+            rbrace: x.1,
+        })
+}
+
+fn term<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
+    r#let.or(fun).or(ite).or(apps).parse(input)
+}
+
+fn const_or_var<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
+    match input.first() {
+        Some(x) if x.data.1 == TokenKind::Num => input
+            .get(1..)
+            .map(|i| (i, Term::Lit(x.map(|d| d.0.parse().unwrap())))),
+        Some(x) if x.data.1 == TokenKind::TrueKeyword => {
+            input.get(1..).map(|i| (i, Term::Bool(x.map(|_| true))))
+        }
+        Some(x) if x.data.1 == TokenKind::FalseKeyword => {
+            input.get(1..).map(|i| (i, Term::Bool(x.map(|_| false))))
+        }
+        Some(x) if x.data.1 == TokenKind::Ident => input
+            .get(1..)
+            .map(|i| (i, Term::Var(x.map(|d| d.0.to_owned())))),
+        _ => None,
+    }
+}
+
+fn parens<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
+    kw(TokenKind::LParen)
+        .with(term)
+        .with(kw(TokenKind::RParen))
+        .map(|x| x.0 .1)
+        .parse(input)
+}
+
+fn subterm_no_sel<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
+    parens.or(record).or(const_or_var).parse(input)
+}
+
+fn subterm<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
+    let (input, lhs) = subterm_no_sel(input)?;
+    let (input, rhs) = (kw(TokenKind::Dot)
+        .with(string(TokenKind::Ident))
+        .map(|x| x.1))
+    .many0()
+    .parse(input)?;
+    Some((
+        input,
+        rhs.into_iter()
+            .fold(lhs, |acc, ident| Term::Sel(Box::new(acc), ident)),
+    ))
+}
+
+fn record<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
+    let (input, l) = kw(TokenKind::LCurly).parse(input)?;
+    let (input, data) = string(TokenKind::Ident)
+        .with(kw(TokenKind::Eq))
+        .with(term)
+        .map(|x| (x.0 .0, x.0 .1, x.1))
+        .many0_sep(kw(TokenKind::Semi))
+        .parse(input)?;
+    let (input, r) = kw(TokenKind::RCurly).parse(input)?;
+    Some((
+        input,
+        Term::Rcd {
+            left: l,
+            data,
+            right: r,
+        },
+    ))
+}
+
+fn fun<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
+    let (input, fun) = kw(TokenKind::DefKeyword).parse(input)?;
+    let (input, ident) = maybe(string(TokenKind::Ident), Expect::Ident).parse(input)?;
+    let (input, arrow) = maybe(kw(TokenKind::Arrow), Expect::Arrow).parse(input)?;
+    let (input, rhs) = maybe(term, Expect::Term).parse(input)?;
+    Some((
+        input,
+        Term::Lam {
+            fun,
+            ident,
+            arrow,
+            term: Box::new(rhs),
+        },
+    ))
+}
+
+fn r#let<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
+    let (input, keyword) = kw(TokenKind::ValKeyword).parse(input)?;
+    let (input, name) = maybe(string(TokenKind::Ident), Expect::Ident).parse(input)?;
+    let (input, eq) = maybe(kw(TokenKind::Eq), Expect::Eq).parse(input)?;
+    let (input, term1) = maybe(term, Expect::Term).parse(input)?;
+    Some((
+        input,
+        Term::Let {
+            keyword,
+            name,
+            rhs: Box::new(term1),
+        },
+    ))
+}
+
+fn ite<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
+    let (input, if_kw) = kw(TokenKind::IfKeyword).parse(input)?;
+    let (input, lparen) = maybe(kw(TokenKind::LParen), Expect::LParen).parse(input)?;
+    let (input, cond) = maybe(term, Expect::Term).parse(input)?;
+    let (input, rparen) = maybe(kw(TokenKind::RParen), Expect::RParen).parse(input)?;
+    let (input, rhs1) = maybe(term, Expect::Term).parse(input)?;
+    let (input, else_kw) = maybe(kw(TokenKind::ElseKeyword), Expect::Else).parse(input)?;
+    let (input, rhs2) = maybe(term, Expect::Term).parse(input)?;
+    Some((
+        input,
+        Term::IfExpr {
+            if_kw,
+            lparen,
+            cond: Box::new(cond),
+            rparen,
+            rhs1: Box::new(rhs1),
+            else_kw,
+            rhs2: Box::new(rhs2),
+        },
+    ))
+}
+
+fn apps<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
+    subterm
+        .many1()
+        .map(|x| {
+            x.into_iter()
+                .reduce(|a, b| Term::App(Box::new(a), Box::new(b)))
+                .unwrap()
+        })
+        .parse(input)
+}
+
+use types::{param, Param};
 use TokenKind::*;
-use TreeKind::*;
-
+/*
 pub fn parse<'a>(text: &'a str, path: &'a Path) -> (Tree<'a>, Vec<PError<'a>>) {
     let input = Span {
         data: text,
@@ -393,119 +426,57 @@ fn func(p: &mut Parser) {
         block(p);
     }
     p.close(m, Fn);
-}
+}*/
 
 const PARAM_LIST_RECOVERY: &[TokenKind] = &[DefKeyword, LCurly];
-fn param_list(p: &mut Parser) {
-    assert!(p.at(LParen));
-    let m = p.open();
-
-    p.expect(LParen);
-    while !p.at(RParen) && !p.eof() {
-        if p.at(Ident) {
-            param(p);
-        } else {
-            if p.at_any(PARAM_LIST_RECOVERY) {
-                break;
-            }
-            p.advance_with_error(ErrKind::TreeKind(Param));
-        }
-    }
-    p.expect(RParen);
-
-    p.close(m, ParamList);
-}
-
-fn param(p: &mut Parser) {
-    assert!(p.at(Ident));
-    let m = p.open();
-
-    p.expect(Ident);
-    p.expect(Colon);
-    type_expr(p);
-    if !p.at(RParen) {
-        p.expect(Comma);
-    }
-
-    p.close(m, Param);
+fn param_list<'a>(
+    input: &'a [TokenNode<'a>],
+) -> Option<(&'a [TokenNode<'a>], Paren<'a, Vec<Param<'a>>>)> {
+    paren(param.many0_sep(kw(TokenKind::Comma)), Expect::Param).parse(input)
 }
 
 const STMT_RECOVERY: &[TokenKind] = &[DefKeyword];
 const EXPR_FIRST: &[TokenKind] = &[Num, TrueKeyword, FalseKeyword, Ident, LParen];
-fn block(p: &mut Parser) {
-    assert!(p.at(LCurly));
-    let m = p.open();
-
-    p.expect(LCurly);
-    while !p.at(RCurly) && !p.eof() {
-        match p.nth(0) {
-            ValKeyword => stmt_let(p),
-            ReturnKeyword => stmt_return(p),
-            _ => {
-                if p.at_any(EXPR_FIRST) {
-                    stmt_expr(p)
-                } else {
-                    if p.at_any(STMT_RECOVERY) {
-                        break;
-                    }
-                    p.advance_with_error(ErrKind::Stmt);
-                }
-            }
-        }
-    }
-    p.expect(RCurly);
-
-    p.close(m, Block);
+fn block<'a>(
+    input: &'a [TokenNode<'a>],
+) -> Option<(&'a [TokenNode<'a>], Brace<'a, Vec<Stmt<'a>>>)> {
+    brace(stmt.many0(), Expect::Stmt).parse(input)
 }
 
-fn stmt_let(p: &mut Parser) {
-    assert!(p.at(ValKeyword));
-    let m = p.open();
+fn stmt<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Stmt<'a>)> {
+    stmt_val
+        .or(stmt_return)
+        .or(expr.map(Stmt::Expr))
+        .parse(input)
+}
 
-    p.expect(ValKeyword);
-    p.expect(Ident);
-    p.expect(Eq);
-    expr(p);
-
-    p.close(m, StmtLet);
+fn stmt_val<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Stmt<'a>)> {
+    kw(ValKeyword)
+        .with(maybe(string(Ident), Expect::Ident))
+        .with(maybe(kw(Eq), Expect::Eq))
+        .with(maybe(expr, Expect::Expr))
+        .map(|x| Stmt::Val {
+            val: x.0 .0 .0,
+            ident: x.0 .0 .1,
+            eq: x.0 .1,
+            expr: x.1,
+        })
+        .parse(input)
 }
 
 /// stmt_return ::= return expr
-fn stmt_return(p: &mut Parser) {
-    assert!(p.at(ReturnKeyword));
-    let m = p.open();
-
-    p.expect(ReturnKeyword);
-    expr(p);
-
-    p.close(m, StmtReturn);
+fn stmt_return<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Stmt<'a>)> {
+    kw(ReturnKeyword)
+        .with(expr)
+        .map(|x| Stmt::Return(x.0, x.1))
+        .parse(input)
 }
 
 /// arg_list ::= ( {expr [,]} )
-fn arg_list(p: &mut Parser) {
-    assert!(p.at(LParen));
-    let m = p.open();
-
-    p.expect(LParen);
-    while !p.at(RParen) && !p.eof() {
-        if p.at_any(EXPR_FIRST) {
-            arg(p);
-        } else {
-            break;
-        }
-    }
-    p.expect(RParen);
-
-    p.close(m, ArgList);
-}
-
-fn arg(p: &mut Parser) {
-    let m = p.open();
-    expr(p);
-    if !p.at(RParen) {
-        p.expect(Comma);
-    }
-    p.close(m, Arg);
+pub fn arg_list<'a>(
+    input: &'a [TokenNode<'a>],
+) -> Option<(&'a [TokenNode<'a>], Paren<'a, Vec<Expr<'a>>>)> {
+    paren(expr.many0_sep(kw(Comma)), Expect::ArgList).parse(input)
 }
 
 #[test]
@@ -521,6 +492,13 @@ def uncurry[A: U, B: U, C: U](t: (A, B), f: A -> B -> C): C = {
 }
 ";
     let path = std::path::PathBuf::from("./");
-    let cst = parse(text, &path);
-    eprintln!("{:?}\n\n{:#?}", cst.0, cst.1);
+    //let cst = parse(text, &path);
+    let lex = lex(Span {
+        data: text,
+        start_offset: 0,
+        end_offset: text.len() as u32,
+        path: &path,
+    })
+    .unwrap();
+    eprintln!("{:?}\n\n{:#?}", lex.0, lex.1);
 }

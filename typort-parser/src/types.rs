@@ -1,64 +1,64 @@
-use crate::{Parser, TokenKind, TokenKind::*, TreeKind::*};
+use crate::{
+    combinator::{maybe, Maybe, Parser},
+    kw,
+    lex::TokenNode,
+    paren, square, string, Expect, Paren, Span, Square,
+    TokenKind::{self, *},
+};
 
 const PARAM_LIST_RECOVERY: &[TokenKind] = &[DefKeyword, LCurly, LParen];
-pub fn type_param(p: &mut Parser) {
-    assert!(p.at(LSquare));
-    let m = p.open();
 
-    p.expect(LSquare);
-    while !p.at(RSquare) && !p.eof() {
-        if p.at(Ident) {
-            param(p);
-        } else {
-            if p.at_any(PARAM_LIST_RECOVERY) {
-                break;
-            }
-            p.advance_with_error(crate::ErrKind::TypeExpr);
-        }
-    }
-    p.expect(RSquare);
-
-    p.close(m, TypeParam);
+pub struct TypeParam<'a> {
+    data: Square<'a, Vec<Param<'a>>>,
 }
 
-fn param(p: &mut Parser) {
-    assert!(p.at(Ident));
-    let m = p.open();
-
-    p.expect(Ident);
-    p.expect(Colon);
-    type_expr(p);
-    if !p.at(RSquare) {
-        p.expect(Comma);
-    }
-
-    p.close(m, Param);
+pub fn type_param<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], TypeParam<'a>)> {
+    square(param.many0_sep(kw(TokenKind::Comma)), Expect::LSquare)
+        .map(|x| TypeParam { data: x })
+        .parse(input)
 }
 
-pub fn type_expr(p: &mut Parser) {
-    let m = p.open();
-    if p.at(LParen) {
-        p.expect(LParen);
-        while !p.at(RParen) && !p.eof() {
-            if p.at(Ident) || p.at(LParen) {
-                type_expr(p);
-                if !p.at(RParen) {
-                    p.expect(Comma);
-                }
-            } else {
-                if p.at_any(PARAM_LIST_RECOVERY) {
-                    break;
-                }
-                p.advance_with_error(crate::ErrKind::TypeExpr);
-            }
-        }
-        p.expect(RParen);
-    } else {
-        p.expect(Ident);
-        if p.at(Arrow) {
-            p.expect(Arrow);
-            type_expr(p);
-        }
-    }
-    p.close(m, TypeExpr);
+pub struct Param<'a> {
+    pub name: Span<'a, String>,
+    pub colon: Maybe<'a, Span<'a, ()>, Expect>,
+    pub ty: Maybe<'a, TypeExpr<'a>, Expect>,
+}
+
+pub fn param<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Param<'a>)> {
+    string(TokenKind::Ident)
+        .with(maybe(kw(TokenKind::Colon), Expect::Colon))
+        .with(maybe(type_expr, Expect::TypeExpr))
+        .map(|x| Param {
+            name: x.0 .0,
+            colon: x.0 .1,
+            ty: x.1,
+        })
+        .parse(input)
+}
+
+pub enum TypeExpr<'a> {
+    Base(Span<'a, String>),
+    Arrow(
+        Span<'a, String>,
+        Span<'a, ()>,
+        Box<Maybe<'a, TypeExpr<'a>, Expect>>,
+    ),
+    Tuple(Paren<'a, Vec<TypeExpr<'a>>>),
+}
+
+fn type_expr<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], TypeExpr<'a>)> {
+    let base_or_arrow = string(TokenKind::Ident)
+        .with(
+            kw(TokenKind::Arrow)
+                .with(maybe(type_expr, Expect::TypeExpr))
+                .option(),
+        )
+        .map(|(base, ret)| match ret {
+            Some((arrow, ty)) => TypeExpr::Arrow(base, arrow, Box::new(ty)),
+            None => TypeExpr::Base(base),
+        });
+    paren(type_expr.many0_sep(kw(TokenKind::Comma)), Expect::TypeExpr)
+        .map(TypeExpr::Tuple)
+        .or(base_or_arrow)
+        .parse(input)
 }

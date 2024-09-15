@@ -17,7 +17,7 @@ const KEYWORD: [(&str, TokenKind); 10] = [
     ("return", ReturnKeyword),
 ];
 
-const OP: [(&str, TokenKind); 13] = [
+const OP: [(&str, TokenKind); 14] = [
     ("(", LParen),
     (")", RParen),
     ("{", LCurly),
@@ -26,12 +26,15 @@ const OP: [(&str, TokenKind); 13] = [
     (";", Semi),
     (",", Comma),
     (":", Colon),
+    (".", Dot),
     ("->", Arrow),
     ("+", Plus),
     ("-", Minus),
     ("*", Star),
     ("/", Slash),
 ];
+
+pub type TokenNode<'a> = Span<'a, (&'a str, TokenKind)>;
 
 fn ident<'a>(input: Span<'a, &'a str>) -> Option<(Input<'a>, Token<'a>)> {
     pmatch(|c: char| c.is_alphabetic() || c == '_')
@@ -90,7 +93,8 @@ fn op<'a>(input: Span<'a, &'a str>) -> Option<(Input<'a>, Token<'a>)> {
             Op
         };
         x.map(move |y| (y, token))
-    }).parse(input)
+    })
+    .parse(input)
 }
 
 pub fn lex<'a>(input: Span<'a, &'a str>) -> Option<(Input<'a>, Vec<Token<'a>>)> {
