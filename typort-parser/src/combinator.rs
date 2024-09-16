@@ -125,9 +125,12 @@ pub enum Maybe<'a, T, E> {
     Hole(Span<'a, E>),
 }
 
-pub fn maybe<'a, T, P, E: Copy>(x: P, err: E) -> impl Parser<&'a [TokenNode<'a>], Maybe<'a, T, E>>
+pub fn maybe<'a: 'b, 'b, T, P, E: Copy>(
+    x: P,
+    err: E,
+) -> impl Parser<&'b [TokenNode<'a>], Maybe<'a, T, E>>
 where
-    P: Parser<&'a [TokenNode<'a>], T>,
+    P: Parser<&'b [TokenNode<'a>], T>,
 {
     move |input| match x.parse(input) {
         Some((input, a)) => Some((input, Maybe::Some(a))),

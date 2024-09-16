@@ -43,14 +43,14 @@ impl<'a> Operator<'a> {
     }
 }
 
-pub fn expr<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Expr<'a>)> {
+pub fn expr<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Expr<'a>)> {
     expr_rec(input, None)
 }
 
-fn expr_rec<'a>(
-    input: &'a [TokenNode<'a>],
+fn expr_rec<'a: 'b, 'b>(
+    input: &'b [TokenNode<'a>],
     left: Option<usize>,
-) -> Option<(&'a [TokenNode<'a>], Expr<'a>)> {
+) -> Option<(&'b [TokenNode<'a>], Expr<'a>)> {
     let (mut input, mut lhs) = expr_call(input)?;
     while let Some(op) = op(input) {
         if right_binds_tighter(left, op.1.to_level()) {
@@ -80,7 +80,7 @@ fn expr_rec<'a>(
     Some((input, lhs))
 }
 
-fn op<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Operator<'a>)> {
+fn op<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Operator<'a>)> {
     kw(Plus)
         .map(Operator::Add)
         .or(kw(Minus).map(Operator::Sub))
@@ -92,7 +92,7 @@ fn op<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Operator<'
 
 /// expr_call = expr_delimited arg_list
 ///         | expr_delimited
-fn expr_call<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Expr<'a>)> {
+fn expr_call<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Expr<'a>)> {
     expr_delimited
         .with(arg_list.option())
         .map(|(a, b)| match b {
@@ -113,7 +113,9 @@ fn right_binds_tighter(left: Option<usize>, right: Option<usize>) -> bool {
     right_tightness > left_tightness
 }
 
-fn expr_delimited<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Expr<'a>)> {
+fn expr_delimited<'a: 'b, 'b>(
+    input: &'b [TokenNode<'a>],
+) -> Option<(&'b [TokenNode<'a>], Expr<'a>)> {
     kw(TrueKeyword)
         .map(|x| Expr::Bool(x.map(|_| true)))
         .or(kw(FalseKeyword).map(|x| Expr::Bool(x.map(|_| false))))

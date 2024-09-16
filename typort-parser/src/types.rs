@@ -8,23 +8,27 @@ use crate::{
 
 const PARAM_LIST_RECOVERY: &[TokenKind] = &[DefKeyword, LCurly, LParen];
 
+#[derive(Clone, Debug)]
 pub struct TypeParam<'a> {
     data: Square<'a, Vec<Param<'a>>>,
 }
 
-pub fn type_param<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], TypeParam<'a>)> {
+pub fn type_param<'a: 'b, 'b>(
+    input: &'b [TokenNode<'a>],
+) -> Option<(&'b [TokenNode<'a>], TypeParam<'a>)> {
     square(param.many0_sep(kw(TokenKind::Comma)), Expect::LSquare)
         .map(|x| TypeParam { data: x })
         .parse(input)
 }
 
+#[derive(Clone, Debug)]
 pub struct Param<'a> {
     pub name: Span<'a, String>,
     pub colon: Maybe<'a, Span<'a, ()>, Expect>,
     pub ty: Maybe<'a, TypeExpr<'a>, Expect>,
 }
 
-pub fn param<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Param<'a>)> {
+pub fn param<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Param<'a>)> {
     string(TokenKind::Ident)
         .with(maybe(kw(TokenKind::Colon), Expect::Colon))
         .with(maybe(type_expr, Expect::TypeExpr))
@@ -36,6 +40,7 @@ pub fn param<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Par
         .parse(input)
 }
 
+#[derive(Clone, Debug)]
 pub enum TypeExpr<'a> {
     Base(Span<'a, String>),
     Arrow(
@@ -46,7 +51,9 @@ pub enum TypeExpr<'a> {
     Tuple(Paren<'a, Vec<TypeExpr<'a>>>),
 }
 
-fn type_expr<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], TypeExpr<'a>)> {
+pub fn type_expr<'a: 'b, 'b>(
+    input: &'b [TokenNode<'a>],
+) -> Option<(&'b [TokenNode<'a>], TypeExpr<'a>)> {
     let base_or_arrow = string(TokenKind::Ident)
         .with(
             kw(TokenKind::Arrow)

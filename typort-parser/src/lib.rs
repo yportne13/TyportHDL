@@ -165,6 +165,19 @@ pub struct TypeVariable<'a> {
     hash: Span<'a, i32>,
 }
 
+#[derive(Clone, Debug)]
+pub struct Fn<'a> {
+    def: Span<'a, ()>,
+    name: Maybe<'a, Span<'a, String>, Expect>,
+    type_params: Option<TypeParam<'a>>,
+    params: Vec<Paren<'a, Vec<Param<'a>>>>,
+    ret_type: (
+        (Span<'a, ()>, Maybe<'a, TypeExpr<'a>, Expect>),
+        Maybe<'a, Span<'a, ()>, Expect>,
+    ),
+    body: Brace<'a, Vec<Stmt<'a>>>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Paren<'a, T> {
     lparen: Span<'a, ()>,
@@ -186,23 +199,23 @@ pub struct Brace<'a, T> {
     rbrace: Maybe<'a, Span<'a, ()>, Expect>,
 }
 
-fn kw<'a, 'b: 'a>(p: TokenKind) -> impl Parser<&'a [TokenNode<'b>], Span<'a, ()>> {
-    move |input: &'a [TokenNode<'b>]| match input.first() {
+fn kw<'a: 'b, 'b>(p: TokenKind) -> impl Parser<&'b [TokenNode<'a>], Span<'a, ()>> {
+    move |input: &'b [TokenNode<'a>]| match input.first() {
         Some(x) if x.data.1 == p => input.get(1..).map(|i| (i, x.map(|_| ()))),
         _ => None,
     }
 }
 
-fn string<'a>(p: TokenKind) -> impl Parser<&'a [TokenNode<'a>], Span<'a, String>> {
-    move |input: &'a [TokenNode<'a>]| match input.first() {
+fn string<'a: 'b, 'b>(p: TokenKind) -> impl Parser<&'b [TokenNode<'a>], Span<'a, String>> {
+    move |input: &'b [TokenNode<'a>]| match input.first() {
         Some(x) if x.data.1 == p => input.get(1..).map(|i| (i, x.map(|s| s.0.to_owned()))),
         _ => None,
     }
 }
 
-fn paren<'a, P, O>(p: P, expect: Expect) -> impl Parser<&'a [TokenNode<'a>], Paren<'a, O>>
+fn paren<'a: 'b, 'b, P, O>(p: P, expect: Expect) -> impl Parser<&'b [TokenNode<'a>], Paren<'a, O>>
 where
-    P: Parser<&'a [TokenNode<'a>], O>,
+    P: Parser<&'b [TokenNode<'a>], O>,
 {
     kw(TokenKind::LParen)
         .with(maybe(p, expect))
@@ -214,9 +227,9 @@ where
         })
 }
 
-fn square<'a, P, O>(p: P, expect: Expect) -> impl Parser<&'a [TokenNode<'a>], Square<'a, O>>
+fn square<'a: 'b, 'b, P, O>(p: P, expect: Expect) -> impl Parser<&'b [TokenNode<'a>], Square<'a, O>>
 where
-    P: Parser<&'a [TokenNode<'a>], O>,
+    P: Parser<&'b [TokenNode<'a>], O>,
 {
     kw(TokenKind::LSquare)
         .with(maybe(p, expect))
@@ -228,9 +241,9 @@ where
         })
 }
 
-fn brace<'a, P, O>(p: P, expect: Expect) -> impl Parser<&'a [TokenNode<'a>], Brace<'a, O>>
+fn brace<'a: 'b, 'b, P, O>(p: P, expect: Expect) -> impl Parser<&'b [TokenNode<'a>], Brace<'a, O>>
 where
-    P: Parser<&'a [TokenNode<'a>], O>,
+    P: Parser<&'b [TokenNode<'a>], O>,
 {
     kw(TokenKind::LCurly)
         .with(maybe(p, expect))
@@ -373,10 +386,10 @@ fn apps<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>
         .parse(input)
 }
 
-use types::{param, Param};
+use types::{param, type_expr, Param, TypeExpr, TypeParam};
 use TokenKind::*;
-/*
-pub fn parse<'a>(text: &'a str, path: &'a Path) -> (Tree<'a>, Vec<PError<'a>>) {
+
+pub fn parse<'a>(text: &'a str, path: &'a Path) -> Vec<Fn<'a>> {
     let input = Span {
         data: text,
         start_offset: 0,
@@ -387,70 +400,66 @@ pub fn parse<'a>(text: &'a str, path: &'a Path) -> (Tree<'a>, Vec<PError<'a>>) {
     if !tokens.0.data.is_empty() {
         panic!("some unexpected error happens in compiler. lex error");
     }
-    let mut p = Parser::new(tokens.1);
-    file(&mut p);
-    p.build_tree()
+    let ret = file(&tokens.1).expect("some unexpected error happens in compiler. parse error");
+    if !ret.0.is_empty() {
+        println!("{:#?}", ret.0);
+        panic!("some unexpected error happens in compiler. parse error")
+    }
+    ret.1
 }
 
-fn file(p: &mut Parser) {
-    let m = p.open();
-    while !p.eof() {
-        if p.at(DefKeyword) {
-            func(p)
-        } else {
-            p.advance_with_error(ErrKind::TreeKind(Fn));
-        }
-    }
-    p.close(m, File);
+fn file<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Vec<Fn<'a>>)> {
+    func.many0().parse(input)
 }
 
 /// def ident [ type_param ] param_list (: type_expr = | [=] ) block
-fn func(p: &mut Parser) {
-    assert!(p.at(DefKeyword));
-    let m = p.open();
-    p.expect(DefKeyword);
-    p.expect(Ident);
-    if p.at(LSquare) {
-        type_param(p);
-    }
-    while p.at(LParen) {
-        param_list(p);
-    }
-    if p.eat(Colon) {
-        type_expr(p);
-        p.expect(Eq);
-    } else if p.eat(Eq) {
-        p.expect(Eq);
-    }
-    if p.at(LCurly) {
-        block(p);
-    }
-    p.close(m, Fn);
-}*/
+fn func<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Fn<'a>)> {
+    kw(DefKeyword)
+        .with(maybe(string(Ident), Expect::Ident))
+        .with(type_param.option())
+        .with(param_list.many0())
+        .with(
+            kw(Colon)
+                .with(maybe(type_expr, Expect::TypeExpr))
+                .with(maybe(kw(Eq), Expect::Eq)),
+        )
+        .with(block)
+        .map(
+            |(((((def, name), type_params), params), ret_type), body)| Fn {
+                def,
+                name,
+                type_params,
+                params,
+                ret_type,
+                body,
+            },
+        )
+        .parse(input)
+}
 
 const PARAM_LIST_RECOVERY: &[TokenKind] = &[DefKeyword, LCurly];
-fn param_list<'a>(
-    input: &'a [TokenNode<'a>],
-) -> Option<(&'a [TokenNode<'a>], Paren<'a, Vec<Param<'a>>>)> {
+fn param_list<'a: 'b, 'b>(
+    input: &'b [TokenNode<'a>],
+) -> Option<(&'b [TokenNode<'a>], Paren<'a, Vec<Param<'a>>>)> {
     paren(param.many0_sep(kw(TokenKind::Comma)), Expect::Param).parse(input)
 }
 
 const STMT_RECOVERY: &[TokenKind] = &[DefKeyword];
 const EXPR_FIRST: &[TokenKind] = &[Num, TrueKeyword, FalseKeyword, Ident, LParen];
-fn block<'a>(
-    input: &'a [TokenNode<'a>],
-) -> Option<(&'a [TokenNode<'a>], Brace<'a, Vec<Stmt<'a>>>)> {
+fn block<'a: 'b, 'b>(
+    input: &'b [TokenNode<'a>],
+) -> Option<(&'b [TokenNode<'a>], Brace<'a, Vec<Stmt<'a>>>)> {
     brace(stmt.many0(), Expect::Stmt).parse(input)
 }
 
-fn stmt<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Stmt<'a>)> {
+fn stmt<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt<'a>)> {
     stmt_val
         .or(stmt_return)
         .or(expr.map(Stmt::Expr))
         .parse(input)
 }
 
-fn stmt_val<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Stmt<'a>)> {
+fn stmt_val<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt<'a>)> {
     kw(ValKeyword)
         .with(maybe(string(Ident), Expect::Ident))
         .with(maybe(kw(Eq), Expect::Eq))
@@ -465,7 +474,7 @@ fn stmt_val<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Stmt
 }
 
 /// stmt_return ::= return expr
-fn stmt_return<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Stmt<'a>)> {
+fn stmt_return<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt<'a>)> {
     kw(ReturnKeyword)
         .with(expr)
         .map(|x| Stmt::Return(x.0, x.1))
@@ -473,16 +482,16 @@ fn stmt_return<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], S
 }
 
 /// arg_list ::= ( {expr [,]} )
-pub fn arg_list<'a>(
-    input: &'a [TokenNode<'a>],
-) -> Option<(&'a [TokenNode<'a>], Paren<'a, Vec<Expr<'a>>>)> {
+pub fn arg_list<'a: 'b, 'b>(
+    input: &'b [TokenNode<'a>],
+) -> Option<(&'b [TokenNode<'a>], Paren<'a, Vec<Expr<'a>>>)> {
     paren(expr.many0_sep(kw(Comma)), Expect::ArgList).parse(input)
 }
 
 #[test]
 fn smoke() {
     let text = "
-def f() {
+def f(): Int = {
   val x = 1 +
   val y = 2
 }
@@ -492,13 +501,14 @@ def uncurry[A: U, B: U, C: U](t: (A, B), f: A -> B -> C): C = {
 }
 ";
     let path = std::path::PathBuf::from("./");
-    //let cst = parse(text, &path);
-    let lex = lex(Span {
+    let cst = parse(text, &path);
+    println!("{:#?}", cst);
+    /*let lex = lex(Span {
         data: text,
         start_offset: 0,
         end_offset: text.len() as u32,
         path: &path,
     })
     .unwrap();
-    eprintln!("{:?}\n\n{:#?}", lex.0, lex.1);
+    eprintln!("{:?}\n\n{:#?}", lex.0, lex.1);*/
 }
