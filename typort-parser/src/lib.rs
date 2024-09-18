@@ -7,7 +7,7 @@ use crate::lex::lex;
 use crate::types::type_param;
 
 pub use combinator::Span;
-use combinator::{maybe, Maybe, Parser};
+use combinator::{maybe, AstDebug, Maybe, Parser};
 use expr::Expr;
 use lex::TokenNode;
 
@@ -152,6 +152,18 @@ pub struct Paren<'a, T> {
     rparen: Maybe<'a, Span<'a, ()>, Expect>,
 }
 
+impl<'a, T: AstDebug> AstDebug for Paren<'a, T> {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        s.push_str(&format!(
+            "{}( @ {}\n",
+            " ".repeat(depth),
+            self.lparen.start_offset
+        ));
+        self.data.fmt(s, depth + 1);
+        s.push_str(&format!("{})\n", " ".repeat(depth)));
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Square<'a, T> {
     lbracket: Span<'a, ()>,
@@ -159,11 +171,35 @@ pub struct Square<'a, T> {
     rbracket: Maybe<'a, Span<'a, ()>, Expect>,
 }
 
+impl<'a, T: AstDebug> AstDebug for Square<'a, T> {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        s.push_str(&format!(
+            "{}[ @ {}\n",
+            " ".repeat(depth),
+            self.lbracket.start_offset
+        ));
+        self.data.fmt(s, depth + 1);
+        s.push_str(&format!("{}]\n", " ".repeat(depth)));
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Brace<'a, T> {
     lbrace: Span<'a, ()>,
     data: Maybe<'a, T, Expect>,
     rbrace: Maybe<'a, Span<'a, ()>, Expect>,
+}
+
+impl<'a, T: AstDebug> AstDebug for Brace<'a, T> {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        s.push_str(&format!(
+            "{}{{ @ {}\n",
+            " ".repeat(depth),
+            self.lbrace.start_offset
+        ));
+        self.data.fmt(s, depth + 1);
+        s.push_str(&format!("{}}}\n", " ".repeat(depth)));
+    }
 }
 
 fn kw<'a: 'b, 'b>(p: TokenKind) -> impl Parser<&'b [TokenNode<'a>], Span<'a, ()>> {

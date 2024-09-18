@@ -28,7 +28,7 @@ impl<'a, T: Debug> Debug for Span<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{:?}:{},{}",
+            "{:?} @ {},{}",
             self.data, self.start_offset, self.end_offset
         )
     }
@@ -125,6 +125,17 @@ pub enum Maybe<'a, T, E> {
     Hole(Span<'a, E>),
 }
 
+impl<'a, T: AstDebug, E> AstDebug for Maybe<'a, T, E> {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        match self {
+            Maybe::Some(x) => x.fmt(s, depth),
+            Maybe::Hole(x) => {
+                s.push_str(&format!("{}Hole @ {}", " ".repeat(depth), x.start_offset))
+            }
+        }
+    }
+}
+
 pub fn maybe<'a: 'b, 'b, T, P, E: Copy>(
     x: P,
     err: E,
@@ -182,5 +193,23 @@ pub fn is<'a, P: Pattern + Copy>(pat: P) -> impl Parser<Input<'a>, Span<'a, &'a 
                 },
             )
         })
+    }
+}
+
+pub trait AstDebug {
+    fn fmt(&self, s: &mut String, depth: usize);
+}
+
+impl<T: AstDebug> AstDebug for Box<T> {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        self.as_ref().fmt(s, depth)
+    }
+}
+
+impl<T: AstDebug> AstDebug for Vec<T> {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        for x in self {
+            x.fmt(s, depth);
+        }
     }
 }

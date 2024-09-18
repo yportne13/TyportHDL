@@ -1,13 +1,13 @@
 use crate::{
     arg_list,
-    combinator::{Maybe, Parser},
+    combinator::{AstDebug, Maybe, Parser},
     kw,
     lex::TokenNode,
-    paren, string, tester, Expect, Paren, Span, Square, TokenKind,
+    paren, string, Expect, Paren, Span, Square, TokenKind,
 };
 use TokenKind::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Expr<'a> {
     Bool(Span<'a, bool>),
     Num(Span<'a, i32>),
@@ -23,6 +23,58 @@ pub enum Expr<'a> {
     Tuple(Square<'a, Vec<Expr<'a>>>),
 }
 
+impl<'a> AstDebug for Expr<'a> {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        match self {
+            Expr::Bool(b) => s.push_str(&format!("{}{:?}\n", " ".repeat(depth), b)),
+            Expr::Num(n) => s.push_str(&format!("{}{:?}\n", " ".repeat(depth), n)),
+            Expr::Name(n) => s.push_str(&format!("{}{:?}\n", " ".repeat(depth), n)),
+            Expr::Paren(p) => p.fmt(s, depth),
+            Expr::Binary(l, op, r) => {
+                let op = match op {
+                    Operator::Add(x) => format!("+ @ {}", x.start_offset),
+                    Operator::Sub(x) => format!("- @ {}", x.start_offset),
+                    Operator::Mul(x) => format!("* @ {}", x.start_offset),
+                    Operator::Div(x) => format!("/ @ {}", x.start_offset),
+                    Operator::Op(x) => format!("{:?}", x),
+                    Operator::Unknown => "Unknown".to_string(),
+                };
+                s.push_str(&format!("{}BinaryExpr\n", " ".repeat(depth)));
+                l.fmt(s, depth + 1);
+                s.push_str(&format!("{}{}\n", " ".repeat(depth + 1), op));
+                r.fmt(s, depth + 1);
+            }
+            Expr::Call(l, param_list) => {
+                s.push_str(&format!("{}Call\n", " ".repeat(depth)));
+                l.fmt(s, depth + 1);
+                param_list.fmt(s, depth + 1);
+            }
+            Expr::Obj(lhs, dot, name) => {
+                s.push_str(&format!("{}Object\n", " ".repeat(depth)));
+                lhs.fmt(s, depth + 1);
+                s.push_str(&format!(
+                    "{}. @ {}\n",
+                    " ".repeat(depth + 1),
+                    dot.start_offset
+                ));
+                s.push_str(&format!("{}{:?}\n", " ".repeat(depth + 1), name))
+            }
+            Expr::Tuple(x) => {
+                s.push_str(&format!("{}Tuple\n", " ".repeat(depth)));
+                x.fmt(s, depth + 1)
+            }
+        }
+    }
+}
+
+impl<'a> std::fmt::Debug for Expr<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut ret = String::new();
+        AstDebug::fmt(self, &mut ret, 0);
+        write!(f, "{}", ret)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Operator<'a> {
     Add(Span<'a, ()>),
@@ -30,7 +82,6 @@ pub enum Operator<'a> {
     Mul(Span<'a, ()>),
     Div(Span<'a, ()>),
     Op(Span<'a, String>),
-    Dot(Span<'a, ()>),
     Unknown,
 }
 
@@ -40,7 +91,6 @@ impl<'a> Operator<'a> {
             Operator::Add(_) | Operator::Sub(_) => Some(0),
             Operator::Mul(_) | Operator::Div(_) => Some(1),
             Operator::Op(_) => Some(2),
-            Operator::Dot(_) => Some(100),
             Operator::Unknown => None,
         }
     }
@@ -137,6 +187,7 @@ fn expr_delimited<'a: 'b, 'b>(
 
 #[test]
 fn test() {
+    use crate::tester;
     tester!(expr, "1");
     tester!(expr, "1 + 2");
     tester!(expr, "1 + 2 * 3");
