@@ -3,7 +3,7 @@ use crate::{
     combinator::{Maybe, Parser},
     kw,
     lex::TokenNode,
-    paren, string, Expect, Paren, Span, Square, TokenKind,
+    paren, string, tester, Expect, Paren, Span, Square, TokenKind,
 };
 use TokenKind::*;
 
@@ -19,6 +19,7 @@ pub enum Expr<'a> {
         Maybe<'a, Box<Expr<'a>>, Expect>,
     ),
     Call(Box<Expr<'a>>, Paren<'a, Vec<Expr<'a>>>),
+    Obj(Box<Expr<'a>>, Span<'a, ()>, Span<'a, String>),
     Tuple(Square<'a, Vec<Expr<'a>>>),
 }
 
@@ -29,6 +30,7 @@ pub enum Operator<'a> {
     Mul(Span<'a, ()>),
     Div(Span<'a, ()>),
     Op(Span<'a, String>),
+    Dot(Span<'a, ()>),
     Unknown,
 }
 
@@ -38,6 +40,7 @@ impl<'a> Operator<'a> {
             Operator::Add(_) | Operator::Sub(_) => Some(0),
             Operator::Mul(_) | Operator::Div(_) => Some(1),
             Operator::Op(_) => Some(2),
+            Operator::Dot(_) => Some(100),
             Operator::Unknown => None,
         }
     }
@@ -90,16 +93,23 @@ fn op<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Op
         .parse(input)
 }
 
-/// expr_call = expr_delimited arg_list
+/// expr_call = expr_call arg_list
+///         | expr_call . ident
 ///         | expr_delimited
 fn expr_call<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Expr<'a>)> {
-    expr_delimited
-        .with(arg_list.option())
-        .map(|(a, b)| match b {
-            Some(b) => Expr::Call(Box::new(a), b),
-            None => a,
-        })
-        .parse(input)
+    let (mut input, mut lhs) = expr_delimited(input)?;
+    loop {
+        if let Some((i, rhs)) = arg_list(input) {
+            input = i;
+            lhs = Expr::Call(Box::new(lhs), rhs);
+        } else if let Some((i, rhs)) = kw(Dot).with(string(Ident)).parse(input) {
+            input = i;
+            lhs = Expr::Obj(Box::new(lhs), rhs.0, rhs.1);
+        } else {
+            break;
+        }
+    }
+    Some((input, lhs))
 }
 
 fn right_binds_tighter(left: Option<usize>, right: Option<usize>) -> bool {
@@ -119,7 +129,19 @@ fn expr_delimited<'a: 'b, 'b>(
     kw(TrueKeyword)
         .map(|x| Expr::Bool(x.map(|_| true)))
         .or(kw(FalseKeyword).map(|x| Expr::Bool(x.map(|_| false))))
+        .or(string(Num).map(|x| Expr::Num(x.map(|y| y.parse().unwrap()))))
         .or(string(Ident).map(Expr::Name))
         .or(paren(expr, Expect::Expr).map(|x| Expr::Paren(Box::new(x))))
         .parse(input)
+}
+
+#[test]
+fn test() {
+    tester!(expr, "1");
+    tester!(expr, "1 + 2");
+    tester!(expr, "1 + 2 * 3");
+    tester!(expr, "1 + 2 + 3");
+    tester!(expr, "1 + foo.num + 3");
+    tester!(expr, "foo.num + list.item.length().div(2)(3) * job()");
+    //tester(expr, "1 + 2");
 }

@@ -132,39 +132,6 @@ pub enum Term<'a> {
     },
 }
 
-pub enum Type<'a> {
-    Top,
-    Bot,
-    Union {
-        lhs: Box<Type<'a>>,
-        rhs: Box<Type<'a>>,
-    },
-    Inter {
-        lhs: Box<Type<'a>>,
-        rhs: Box<Type<'a>>,
-    },
-    Fun {
-        arg: Box<Type<'a>>,
-        ret: Box<Type<'a>>,
-    },
-    Record {
-        fields: Vec<(String, Type<'a>)>,
-    },
-    Recursive {
-        uv: TypeVariable<'a>,
-        body: Box<Type<'a>>,
-    },
-    Primitive {
-        name: Span<'a, String>,
-    },
-    Variable(TypeVariable<'a>),
-}
-
-pub struct TypeVariable<'a> {
-    name_hint: Span<'a, String>,
-    hash: Span<'a, i32>,
-}
-
 #[derive(Clone, Debug)]
 pub struct Fn<'a> {
     def: Span<'a, ()>,
@@ -253,137 +220,6 @@ where
             data: x.0 .1,
             rbrace: x.1,
         })
-}
-
-fn term<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
-    r#let.or(fun).or(ite).or(apps).parse(input)
-}
-
-fn const_or_var<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
-    match input.first() {
-        Some(x) if x.data.1 == TokenKind::Num => input
-            .get(1..)
-            .map(|i| (i, Term::Lit(x.map(|d| d.0.parse().unwrap())))),
-        Some(x) if x.data.1 == TokenKind::TrueKeyword => {
-            input.get(1..).map(|i| (i, Term::Bool(x.map(|_| true))))
-        }
-        Some(x) if x.data.1 == TokenKind::FalseKeyword => {
-            input.get(1..).map(|i| (i, Term::Bool(x.map(|_| false))))
-        }
-        Some(x) if x.data.1 == TokenKind::Ident => input
-            .get(1..)
-            .map(|i| (i, Term::Var(x.map(|d| d.0.to_owned())))),
-        _ => None,
-    }
-}
-
-fn parens<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
-    kw(TokenKind::LParen)
-        .with(term)
-        .with(kw(TokenKind::RParen))
-        .map(|x| x.0 .1)
-        .parse(input)
-}
-
-fn subterm_no_sel<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
-    parens.or(record).or(const_or_var).parse(input)
-}
-
-fn subterm<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
-    let (input, lhs) = subterm_no_sel(input)?;
-    let (input, rhs) = (kw(TokenKind::Dot)
-        .with(string(TokenKind::Ident))
-        .map(|x| x.1))
-    .many0()
-    .parse(input)?;
-    Some((
-        input,
-        rhs.into_iter()
-            .fold(lhs, |acc, ident| Term::Sel(Box::new(acc), ident)),
-    ))
-}
-
-fn record<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
-    let (input, l) = kw(TokenKind::LCurly).parse(input)?;
-    let (input, data) = string(TokenKind::Ident)
-        .with(kw(TokenKind::Eq))
-        .with(term)
-        .map(|x| (x.0 .0, x.0 .1, x.1))
-        .many0_sep(kw(TokenKind::Semi))
-        .parse(input)?;
-    let (input, r) = kw(TokenKind::RCurly).parse(input)?;
-    Some((
-        input,
-        Term::Rcd {
-            left: l,
-            data,
-            right: r,
-        },
-    ))
-}
-
-fn fun<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
-    let (input, fun) = kw(TokenKind::DefKeyword).parse(input)?;
-    let (input, ident) = maybe(string(TokenKind::Ident), Expect::Ident).parse(input)?;
-    let (input, arrow) = maybe(kw(TokenKind::Arrow), Expect::Arrow).parse(input)?;
-    let (input, rhs) = maybe(term, Expect::Term).parse(input)?;
-    Some((
-        input,
-        Term::Lam {
-            fun,
-            ident,
-            arrow,
-            term: Box::new(rhs),
-        },
-    ))
-}
-
-fn r#let<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
-    let (input, keyword) = kw(TokenKind::ValKeyword).parse(input)?;
-    let (input, name) = maybe(string(TokenKind::Ident), Expect::Ident).parse(input)?;
-    let (input, eq) = maybe(kw(TokenKind::Eq), Expect::Eq).parse(input)?;
-    let (input, term1) = maybe(term, Expect::Term).parse(input)?;
-    Some((
-        input,
-        Term::Let {
-            keyword,
-            name,
-            rhs: Box::new(term1),
-        },
-    ))
-}
-
-fn ite<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
-    let (input, if_kw) = kw(TokenKind::IfKeyword).parse(input)?;
-    let (input, lparen) = maybe(kw(TokenKind::LParen), Expect::LParen).parse(input)?;
-    let (input, cond) = maybe(term, Expect::Term).parse(input)?;
-    let (input, rparen) = maybe(kw(TokenKind::RParen), Expect::RParen).parse(input)?;
-    let (input, rhs1) = maybe(term, Expect::Term).parse(input)?;
-    let (input, else_kw) = maybe(kw(TokenKind::ElseKeyword), Expect::Else).parse(input)?;
-    let (input, rhs2) = maybe(term, Expect::Term).parse(input)?;
-    Some((
-        input,
-        Term::IfExpr {
-            if_kw,
-            lparen,
-            cond: Box::new(cond),
-            rparen,
-            rhs1: Box::new(rhs1),
-            else_kw,
-            rhs2: Box::new(rhs2),
-        },
-    ))
-}
-
-fn apps<'a>(input: &'a [TokenNode<'a>]) -> Option<(&'a [TokenNode<'a>], Term<'a>)> {
-    subterm
-        .many1()
-        .map(|x| {
-            x.into_iter()
-                .reduce(|a, b| Term::App(Box::new(a), Box::new(b)))
-                .unwrap()
-        })
-        .parse(input)
 }
 
 use types::{param, type_expr, Param, TypeExpr, TypeParam};
@@ -486,6 +322,22 @@ pub fn arg_list<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
 ) -> Option<(&'b [TokenNode<'a>], Paren<'a, Vec<Expr<'a>>>)> {
     paren(expr.many0_sep(kw(Comma)), Expect::ArgList).parse(input)
+}
+
+#[macro_export]
+macro_rules! tester {
+    ($p:expr, $input:expr) => {
+        let input = Span {
+            data: $input,
+            start_offset: 0,
+            end_offset: $input.len() as u32,
+            path: std::path::Path::new(""),
+        };
+        let tokens = $crate::lex(input).unwrap();
+        // 将 tokens.1 的生命周期显式绑定到 'b
+        let ret = $p.parse(&tokens.1);
+        println!("{:#?}", ret);
+    };
 }
 
 #[test]
