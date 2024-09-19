@@ -1,6 +1,6 @@
 #![feature(pattern)]
 
-use std::{cell::Cell, fmt, path::Path};
+use std::path::Path;
 
 use crate::expr::expr;
 use crate::lex::lex;
@@ -98,58 +98,23 @@ pub enum Stmt<'a> {
 }
 
 #[derive(Clone, Debug)]
-pub enum Term<'a> {
-    Lit(Span<'a, i32>),
-    Bool(Span<'a, bool>),
-    Var(Span<'a, String>),
-    //Paren(Box<Term>),
-    Lam {
-        fun: Span<'a, ()>,
-        ident: Maybe<'a, Span<'a, String>, Expect>,
-        arrow: Maybe<'a, Span<'a, ()>, Expect>,
-        term: Box<Maybe<'a, Term<'a>, Expect>>,
-    },
-    App(Box<Term<'a>>, Box<Term<'a>>),
-    Rcd {
-        left: Span<'a, ()>,
-        data: Vec<(Span<'a, String>, Span<'a, ()>, Term<'a>)>,
-        right: Span<'a, ()>,
-    },
-    Sel(Box<Term<'a>>, Span<'a, String>),
-    Let {
-        keyword: Span<'a, ()>,
-        name: Maybe<'a, Span<'a, String>, Expect>,
-        rhs: Box<Maybe<'a, Term<'a>, Expect>>,
-    },
-    IfExpr {
-        if_kw: Span<'a, ()>,
-        lparen: Maybe<'a, Span<'a, ()>, Expect>,
-        cond: Box<Maybe<'a, Term<'a>, Expect>>,
-        rparen: Maybe<'a, Span<'a, ()>, Expect>,
-        rhs1: Box<Maybe<'a, Term<'a>, Expect>>,
-        else_kw: Maybe<'a, Span<'a, ()>, Expect>,
-        rhs2: Box<Maybe<'a, Term<'a>, Expect>>,
-    },
-}
-
-#[derive(Clone, Debug)]
 pub struct Fn<'a> {
-    def: Span<'a, ()>,
-    name: Maybe<'a, Span<'a, String>, Expect>,
-    type_params: Option<TypeParam<'a>>,
-    params: Vec<Paren<'a, Vec<Param<'a>>>>,
-    ret_type: (
+    pub def: Span<'a, ()>,
+    pub name: Maybe<'a, Span<'a, String>, Expect>,
+    pub type_params: Option<TypeParam<'a>>,
+    pub params: Vec<Paren<'a, Vec<Param<'a>>>>,
+    pub ret_type: (
         (Span<'a, ()>, Maybe<'a, TypeExpr<'a>, Expect>),
         Maybe<'a, Span<'a, ()>, Expect>,
     ),
-    body: Brace<'a, Vec<Stmt<'a>>>,
+    pub body: Brace<'a, Vec<Stmt<'a>>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Paren<'a, T> {
-    lparen: Span<'a, ()>,
-    data: Maybe<'a, T, Expect>,
-    rparen: Maybe<'a, Span<'a, ()>, Expect>,
+    pub lparen: Span<'a, ()>,
+    pub data: Maybe<'a, T, Expect>,
+    pub rparen: Maybe<'a, Span<'a, ()>, Expect>,
 }
 
 impl<'a, T: AstDebug> AstDebug for Paren<'a, T> {
@@ -166,9 +131,9 @@ impl<'a, T: AstDebug> AstDebug for Paren<'a, T> {
 
 #[derive(Debug, Clone)]
 pub struct Square<'a, T> {
-    lbracket: Span<'a, ()>,
-    data: Maybe<'a, T, Expect>,
-    rbracket: Maybe<'a, Span<'a, ()>, Expect>,
+    pub lbracket: Span<'a, ()>,
+    pub data: Maybe<'a, T, Expect>,
+    pub rbracket: Maybe<'a, Span<'a, ()>, Expect>,
 }
 
 impl<'a, T: AstDebug> AstDebug for Square<'a, T> {
@@ -185,9 +150,9 @@ impl<'a, T: AstDebug> AstDebug for Square<'a, T> {
 
 #[derive(Clone, Debug)]
 pub struct Brace<'a, T> {
-    lbrace: Span<'a, ()>,
-    data: Maybe<'a, T, Expect>,
-    rbrace: Maybe<'a, Span<'a, ()>, Expect>,
+    pub lbrace: Span<'a, ()>,
+    pub data: Maybe<'a, T, Expect>,
+    pub rbrace: Maybe<'a, Span<'a, ()>, Expect>,
 }
 
 impl<'a, T: AstDebug> AstDebug for Brace<'a, T> {
@@ -309,15 +274,15 @@ fn func<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], 
         .parse(input)
 }
 
-const PARAM_LIST_RECOVERY: &[TokenKind] = &[DefKeyword, LCurly];
+//const PARAM_LIST_RECOVERY: &[TokenKind] = &[DefKeyword, LCurly];
 fn param_list<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
 ) -> Option<(&'b [TokenNode<'a>], Paren<'a, Vec<Param<'a>>>)> {
     paren(param.many0_sep(kw(TokenKind::Comma)), Expect::Param).parse(input)
 }
 
-const STMT_RECOVERY: &[TokenKind] = &[DefKeyword];
-const EXPR_FIRST: &[TokenKind] = &[Num, TrueKeyword, FalseKeyword, Ident, LParen];
+//const STMT_RECOVERY: &[TokenKind] = &[DefKeyword];
+//const EXPR_FIRST: &[TokenKind] = &[Num, TrueKeyword, FalseKeyword, Ident, LParen];
 fn block<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
 ) -> Option<(&'b [TokenNode<'a>], Brace<'a, Vec<Stmt<'a>>>)> {
@@ -391,12 +356,4 @@ def uncurry[A: U, B: U, C: U](t: (A, B), f: A -> B -> C): C = {
     let path = std::path::PathBuf::from("./");
     let cst = parse(text, &path);
     println!("{:#?}", cst);
-    /*let lex = lex(Span {
-        data: text,
-        start_offset: 0,
-        end_offset: text.len() as u32,
-        path: &path,
-    })
-    .unwrap();
-    eprintln!("{:?}\n\n{:#?}", lex.0, lex.1);*/
 }

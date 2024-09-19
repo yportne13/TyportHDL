@@ -22,6 +22,9 @@ impl<'a, T> Span<'a, T> {
     pub fn len(&self) -> u32 {
         self.end_offset - self.start_offset
     }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl<'a, T: Debug> Debug for Span<'a, T> {
@@ -100,6 +103,7 @@ pub trait Parser<I: Copy, A>: Sized + Copy {
         }
         //self.with(self.many0()).map(|(a, b)| [vec![a], b].concat()).or(&|input| Some((input, vec![])))
     }
+    #[allow(unused)]
     fn many1(self) -> impl Parser<I, Vec<A>> {
         move |input| match self.many0().parse(input) {
             Some((_, v)) if v.is_empty() => None,

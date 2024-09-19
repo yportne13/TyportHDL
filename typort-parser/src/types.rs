@@ -3,20 +3,20 @@ use crate::{
     kw,
     lex::TokenNode,
     paren, square, string, Expect, Paren, Span, Square,
-    TokenKind::{self, *},
+    TokenKind::*,
 };
 
-const PARAM_LIST_RECOVERY: &[TokenKind] = &[DefKeyword, LCurly, LParen];
+//const PARAM_LIST_RECOVERY: &[TokenKind] = &[DefKeyword, LCurly, LParen];
 
 #[derive(Clone, Debug)]
 pub struct TypeParam<'a> {
-    data: Square<'a, Vec<Param<'a>>>,
+    pub data: Square<'a, Vec<Param<'a>>>,
 }
 
 pub fn type_param<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
 ) -> Option<(&'b [TokenNode<'a>], TypeParam<'a>)> {
-    square(param.many0_sep(kw(TokenKind::Comma)), Expect::LSquare)
+    square(param.many0_sep(kw(Comma)), Expect::LSquare)
         .map(|x| TypeParam { data: x })
         .parse(input)
 }
@@ -29,8 +29,8 @@ pub struct Param<'a> {
 }
 
 pub fn param<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Param<'a>)> {
-    string(TokenKind::Ident)
-        .with(maybe(kw(TokenKind::Colon), Expect::Colon))
+    string(Ident)
+        .with(maybe(kw(Colon), Expect::Colon))
         .with(maybe(type_expr, Expect::TypeExpr))
         .map(|x| Param {
             name: x.0 .0,
@@ -54,17 +54,13 @@ pub enum TypeExpr<'a> {
 pub fn type_expr<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
 ) -> Option<(&'b [TokenNode<'a>], TypeExpr<'a>)> {
-    let base_or_arrow = string(TokenKind::Ident)
-        .with(
-            kw(TokenKind::Arrow)
-                .with(maybe(type_expr, Expect::TypeExpr))
-                .option(),
-        )
+    let base_or_arrow = string(Ident)
+        .with(kw(Arrow).with(maybe(type_expr, Expect::TypeExpr)).option())
         .map(|(base, ret)| match ret {
             Some((arrow, ty)) => TypeExpr::Arrow(base, arrow, Box::new(ty)),
             None => TypeExpr::Base(base),
         });
-    paren(type_expr.many0_sep(kw(TokenKind::Comma)), Expect::TypeExpr)
+    paren(type_expr.many0_sep(kw(Comma)), Expect::TypeExpr)
         .map(TypeExpr::Tuple)
         .or(base_or_arrow)
         .parse(input)
