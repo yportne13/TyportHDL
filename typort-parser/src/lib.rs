@@ -151,7 +151,9 @@ impl<'a, T: AstDebug> AstDebug for Square<'a, T> {
 #[derive(Clone, Debug)]
 pub struct Brace<'a, T> {
     pub lbrace: Span<'a, ()>,
+    pub endline1: Option<Span<'a, ()>>,
     pub data: Maybe<'a, T, Expect>,
+    pub endline2: Option<Span<'a, ()>>,
     pub rbrace: Maybe<'a, Span<'a, ()>, Expect>,
 }
 
@@ -214,12 +216,16 @@ where
     P: Parser<&'b [TokenNode<'a>], O>,
 {
     kw(TokenKind::LCurly)
+        .with(kw(EndLine).option())
         .with(maybe(p, expect))
+        .with(kw(EndLine).option())
         .with(maybe(kw(TokenKind::RCurly), Expect::RCurly))
-        .map(|x| Brace {
-            lbrace: x.0 .0,
-            data: x.0 .1,
-            rbrace: x.1,
+        .map(|((((lbrace, endline1), data), endline2), rbrace)| Brace {
+            lbrace,
+            endline1,
+            data,
+            endline2,
+            rbrace,
         })
 }
 
@@ -286,7 +292,10 @@ fn param_list<'a: 'b, 'b>(
 fn block<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
 ) -> Option<(&'b [TokenNode<'a>], Brace<'a, Vec<Stmt<'a>>>)> {
-    brace(stmt.many0(), Expect::Stmt).parse(input)
+    brace(stmt.many0(), Expect::Stmt)
+        .with(kw(EndLine).many0())
+        .map(|(x, _endline)| x)
+        .parse(input)
 }
 
 fn stmt<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt<'a>)> {
@@ -301,7 +310,8 @@ fn stmt_val<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a
         .with(maybe(string(Ident), Expect::Ident))
         .with(maybe(kw(Eq), Expect::Eq))
         .with(maybe(expr, Expect::Expr))
-        .map(|x| Stmt::Val {
+        .with(kw(EndLine).many1())
+        .map(|(x, _endline)| Stmt::Val {
             val: x.0 .0 .0,
             ident: x.0 .0 .1,
             eq: x.0 .1,
@@ -347,6 +357,11 @@ fn smoke() {
 def f(): Int = {
   val x = 1 +
   val y = 2
+
+  val z = x
+
+  val t = z
+    .map(x => x + 1)
 }
 
 def uncurry[A: U, B: U, C: U](t: (A, B), f: A -> B -> C): C = {

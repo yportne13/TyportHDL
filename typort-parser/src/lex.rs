@@ -102,15 +102,16 @@ pub fn lex<'a>(input: Span<'a, &'a str>) -> Option<(Input<'a>, Vec<Token<'a>>)> 
     let endline = pmatch("\n").map(|x| x.map(|y| (y, EndLine)));
     let err_token = pmatch(|c: char| !c.is_ascii_whitespace()).map(|x| x.map(|y| (y, ErrToken)));
     fn ws<'a, A, P: Parser<Span<'a, &'a str>, A>>(p: P) -> impl Parser<Span<'a, &'a str>, A> {
-        //let whitespace = pmatch(|c: char| c == ' ' || c == '\t' || c == '\r').option();
-        let whitespace = pmatch(|c: char| c.is_whitespace()).option();
+        let whitespace = pmatch(|c: char| c == ' ' || c == '\t' || c == '\r').option();
+        //let whitespace = pmatch(|c: char| c.is_whitespace()).option();
         p.with(whitespace).map(|(a, _)| a)
     }
     //let whitespace = pmatch(|c: char| c == ' ' || c == '\t' || c == '\r').option();
     let whitespace = pmatch(|c: char| c.is_whitespace()).option();
     whitespace
         .with(
-            ws(brace.or(ident).or(num).or(op)) //.or(ws(endline))
+            ws(brace.or(ident).or(num).or(op))
+                .or(ws(endline))
                 .or(ws(err_token))
                 .many0(),
         )

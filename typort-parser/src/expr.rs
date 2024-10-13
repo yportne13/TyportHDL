@@ -19,7 +19,12 @@ pub enum Expr<'a> {
         Maybe<'a, Box<Expr<'a>>, Expect>,
     ),
     Call(Box<Expr<'a>>, Paren<'a, Vec<Expr<'a>>>),
-    Obj(Box<Expr<'a>>, Span<'a, ()>, Span<'a, String>),
+    Obj {
+        lhs: Box<Expr<'a>>,
+        endl: Option<Span<'a, ()>>,
+        dot: Span<'a, ()>,
+        obj: Span<'a, String>,
+    },
     Tuple(Square<'a, Vec<Expr<'a>>>),
 }
 
@@ -49,7 +54,12 @@ impl<'a> AstDebug for Expr<'a> {
                 l.fmt(s, depth + 1);
                 param_list.fmt(s, depth + 1);
             }
-            Expr::Obj(lhs, dot, name) => {
+            Expr::Obj {
+                lhs,
+                endl: _,
+                dot,
+                obj: name,
+            } => {
                 s.push_str(&format!("{}Object\n", " ".repeat(depth)));
                 lhs.fmt(s, depth + 1);
                 s.push_str(&format!(
@@ -152,9 +162,19 @@ fn expr_call<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'
         if let Some((i, rhs)) = arg_list(input) {
             input = i;
             lhs = Expr::Call(Box::new(lhs), rhs);
-        } else if let Some((i, rhs)) = kw(Dot).with(string(Ident)).parse(input) {
+        } else if let Some((i, rhs)) = kw(EndLine)
+            .option()
+            .with(kw(Dot))
+            .with(string(Ident))
+            .parse(input)
+        {
             input = i;
-            lhs = Expr::Obj(Box::new(lhs), rhs.0, rhs.1);
+            lhs = Expr::Obj {
+                lhs: Box::new(lhs),
+                endl: rhs.0 .0,
+                dot: rhs.0 .1,
+                obj: rhs.1,
+            };
         } else {
             break;
         }
@@ -194,5 +214,10 @@ fn test() {
     tester!(expr, "1 + 2 + 3");
     tester!(expr, "1 + foo.num + 3");
     tester!(expr, "foo.num + list.item.length().div(2)(3) * job()");
+    tester!(
+        expr,
+        "foo.num + list
+        .item.length().div(2)(3) * job()"
+    );
     //tester(expr, "1 + 2");
 }
