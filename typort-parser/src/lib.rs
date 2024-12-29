@@ -1,23 +1,21 @@
 #![feature(pattern)]
 
-use std::path::Path;
-
 use crate::expr::expr;
 use crate::lex::lex;
 use crate::types::type_param;
 
 pub use combinator::Span;
-use combinator::{maybe, AstDebug, Maybe, Parser};
+use combinator::{maybe, AstDebug, Maybe, Parser, PathId, ToSpan};
 use expr::Expr;
 use lex::TokenNode;
 
 mod class;
-mod combinator;
+pub mod combinator;
 mod decl;
-mod expr;
+pub mod expr;
 mod lex;
 //pub mod resilient;
-mod types;
+pub mod types;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TokenKind {
@@ -60,7 +58,7 @@ pub enum TokenKind {
     Eof,
 }
 
-pub type Token<'a> = Span<'a, (&'a str, TokenKind)>;
+pub type Token<'a> = Span<(&'a str, TokenKind)>;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Expect {
@@ -86,38 +84,91 @@ pub enum Expect {
 }
 
 #[derive(Clone, Debug)]
-pub enum Stmt<'a> {
-    Return(Span<'a, ()>, Expr<'a>),
+pub enum Stmt {
+    Return(Span<()>, Expr),
     Val {
-        val: Span<'a, ()>,
-        ident: Maybe<'a, Span<'a, String>, Expect>,
-        eq: Maybe<'a, Span<'a, ()>, Expect>,
-        expr: Maybe<'a, Expr<'a>, Expect>,
+        val: Span<()>,
+        ident: Maybe<Span<String>, Expect>,
+        eq: Maybe<Span<()>, Expect>,
+        expr: Maybe<Expr, Expect>,
     },
-    Expr(Expr<'a>),
+    Expr(Expr),
+}
+
+impl AstDebug for Stmt {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        match self {
+            Stmt::Return(span, expr) => {
+                s.push_str(&format!(
+                    "{}return @ {}\n",
+                    " ".repeat(depth),
+                    span.start_offset
+                ));
+                expr.fmt(s, depth + 1);
+            },
+            Stmt::Val { val, ident, eq, expr } => {
+                s.push_str(&format!(
+                    "{}val @ {}\n",
+                    " ".repeat(depth),
+                    val.start_offset
+                ));
+                //TODO:ident.fmt(s, depth + 1);
+                s.push_str(&format!(
+                    "{}=\n",
+                    " ".repeat(depth + 1),
+                ));
+                expr.fmt(s, depth + 1);
+            },
+            Stmt::Expr(expr) => {
+                s.push_str(&format!(
+                    "{}stmt_expr\n",
+                    " ".repeat(depth),
+                ));
+                expr.fmt(s, depth + 1);
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
-pub struct Fn<'a> {
-    pub def: Span<'a, ()>,
-    pub name: Maybe<'a, Span<'a, String>, Expect>,
-    pub type_params: Option<TypeParam<'a>>,
-    pub params: Vec<Paren<'a, Vec<Param<'a>>>>,
+pub struct Fn {
+    pub def: Span<()>,
+    pub name: Maybe<Span<String>, Expect>,
+    pub type_params: Option<TypeParam>,
+    pub params: Vec<Paren<Vec<Param>>>,
     pub ret_type: (
-        (Span<'a, ()>, Maybe<'a, TypeExpr<'a>, Expect>),
-        Maybe<'a, Span<'a, ()>, Expect>,
+        (Span<()>, Maybe<TypeExpr, Expect>),
+        Maybe<Span<()>, Expect>,
     ),
-    pub body: Brace<'a, Vec<Stmt<'a>>>,
+    pub body: Expr,
+}
+
+impl AstDebug for Fn {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        s.push_str(&format!(
+            "{}def @ {}\n",
+            " ".repeat(depth),
+            self.def.start_offset,
+        ));
+        //self.name.fmt(s, depth + 1);
+        if let Some(x) = self.type_params.as_ref() {
+            x.fmt(s, depth + 1)
+        }
+        self.params.iter()
+            .for_each(|x| x.fmt(s, depth + 1));
+        //self.ret_type.0.1.fmt(s, depth + 1);
+        self.body.fmt(s, depth + 1);
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct Paren<'a, T> {
-    pub lparen: Span<'a, ()>,
-    pub data: Maybe<'a, T, Expect>,
-    pub rparen: Maybe<'a, Span<'a, ()>, Expect>,
+pub struct Paren<T> {
+    pub lparen: Span<()>,
+    pub data: Maybe<T, Expect>,
+    pub rparen: Maybe<Span<()>, Expect>,
 }
 
-impl<'a, T: AstDebug> AstDebug for Paren<'a, T> {
+impl<T: AstDebug> AstDebug for Paren<T> {
     fn fmt(&self, s: &mut String, depth: usize) {
         s.push_str(&format!(
             "{}( @ {}\n",
@@ -129,14 +180,20 @@ impl<'a, T: AstDebug> AstDebug for Paren<'a, T> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Square<'a, T> {
-    pub lbracket: Span<'a, ()>,
-    pub data: Maybe<'a, T, Expect>,
-    pub rbracket: Maybe<'a, Span<'a, ()>, Expect>,
+impl<'a, T> ToSpan<'a> for Paren<T> {
+    fn to_span(&self) -> Span<()> {
+        self.lparen.to_span() + self.rparen.to_span()
+    }
 }
 
-impl<'a, T: AstDebug> AstDebug for Square<'a, T> {
+#[derive(Debug, Clone)]
+pub struct Square<T> {
+    pub lbracket: Span<()>,
+    pub data: Maybe<T, Expect>,
+    pub rbracket: Maybe<Span<()>, Expect>,
+}
+
+impl<T: AstDebug> AstDebug for Square<T> {
     fn fmt(&self, s: &mut String, depth: usize) {
         s.push_str(&format!(
             "{}[ @ {}\n",
@@ -148,16 +205,22 @@ impl<'a, T: AstDebug> AstDebug for Square<'a, T> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Brace<'a, T> {
-    pub lbrace: Span<'a, ()>,
-    pub endline1: Option<Span<'a, ()>>,
-    pub data: Maybe<'a, T, Expect>,
-    pub endline2: Option<Span<'a, ()>>,
-    pub rbrace: Maybe<'a, Span<'a, ()>, Expect>,
+impl<'a, T> ToSpan<'a> for Square<T> {
+    fn to_span(&self) -> Span<()> {
+        self.lbracket.to_span() + self.rbracket.to_span()
+    }
 }
 
-impl<'a, T: AstDebug> AstDebug for Brace<'a, T> {
+#[derive(Clone, Debug)]
+pub struct Brace<T> {
+    pub lbrace: Span<()>,
+    pub endline1: Option<Span<()>>,
+    pub data: Maybe<T, Expect>,
+    pub endline2: Option<Span<()>>,
+    pub rbrace: Maybe<Span<()>, Expect>,
+}
+
+impl<T: AstDebug> AstDebug for Brace<T> {
     fn fmt(&self, s: &mut String, depth: usize) {
         s.push_str(&format!(
             "{}{{ @ {}\n",
@@ -169,21 +232,27 @@ impl<'a, T: AstDebug> AstDebug for Brace<'a, T> {
     }
 }
 
-fn kw<'a: 'b, 'b>(p: TokenKind) -> impl Parser<&'b [TokenNode<'a>], Span<'a, ()>> {
+impl<'a, T> ToSpan<'a> for Brace<T> {
+    fn to_span(&self) -> Span<()> {
+        self.lbrace.to_span() + self.rbrace.to_span()
+    }
+}
+
+fn kw<'a: 'b, 'b>(p: TokenKind) -> impl Parser<&'b [TokenNode<'a>], Span<()>> {
     move |input: &'b [TokenNode<'a>]| match input.first() {
         Some(x) if x.data.1 == p => input.get(1..).map(|i| (i, x.map(|_| ()))),
         _ => None,
     }
 }
 
-fn string<'a: 'b, 'b>(p: TokenKind) -> impl Parser<&'b [TokenNode<'a>], Span<'a, String>> {
+fn string<'a: 'b, 'b>(p: TokenKind) -> impl Parser<&'b [TokenNode<'a>], Span<String>> {
     move |input: &'b [TokenNode<'a>]| match input.first() {
         Some(x) if x.data.1 == p => input.get(1..).map(|i| (i, x.map(|s| s.0.to_owned()))),
         _ => None,
     }
 }
 
-fn paren<'a: 'b, 'b, P, O>(p: P, expect: Expect) -> impl Parser<&'b [TokenNode<'a>], Paren<'a, O>>
+fn paren<'a: 'b, 'b, P, O>(p: P, expect: Expect) -> impl Parser<&'b [TokenNode<'a>], Paren<O>>
 where
     P: Parser<&'b [TokenNode<'a>], O>,
 {
@@ -197,7 +266,7 @@ where
         })
 }
 
-fn square<'a: 'b, 'b, P, O>(p: P, expect: Expect) -> impl Parser<&'b [TokenNode<'a>], Square<'a, O>>
+fn square<'a: 'b, 'b, P, O>(p: P, expect: Expect) -> impl Parser<&'b [TokenNode<'a>], Square<O>>
 where
     P: Parser<&'b [TokenNode<'a>], O>,
 {
@@ -211,7 +280,7 @@ where
         })
 }
 
-fn brace<'a: 'b, 'b, P, O>(p: P, expect: Expect) -> impl Parser<&'b [TokenNode<'a>], Brace<'a, O>>
+fn brace<'a: 'b, 'b, P, O>(p: P, expect: Expect) -> impl Parser<&'b [TokenNode<'a>], Brace<O>>
 where
     P: Parser<&'b [TokenNode<'a>], O>,
 {
@@ -229,15 +298,22 @@ where
         })
 }
 
+fn tobox<'a: 'b, 'b, P, O>(p: P) -> impl Parser<&'b [TokenNode<'a>], Box<O>>
+where
+    P: Parser<&'b [TokenNode<'a>], O>,
+{
+    p.map(|x| Box::new(x))
+}
+
 use types::{param, type_expr, Param, TypeExpr, TypeParam};
 use TokenKind::*;
 
-pub fn parse<'a>(text: &'a str, path: &'a Path) -> Vec<Fn<'a>> {
+pub fn parse<'a>(text: &'a str, path_id: PathId) -> Vec<Fn> {
     let input = Span {
         data: text,
         start_offset: 0,
         end_offset: text.len() as u32,
-        path,
+        path_id,
     };
     let tokens = lex(input).expect("some unexpected error happens in compiler. lex error");
     if !tokens.0.data.is_empty() {
@@ -245,18 +321,23 @@ pub fn parse<'a>(text: &'a str, path: &'a Path) -> Vec<Fn<'a>> {
     }
     let ret = file(&tokens.1).expect("some unexpected error happens in compiler. parse error");
     if !ret.0.is_empty() {
+        let mut s = String::new();
+        for t in ret.1 {
+            t.fmt(&mut s, 0);
+        }
+        println!("{s}");
         println!("{:#?}", ret.0);
         panic!("some unexpected error happens in compiler. parse error")
     }
     ret.1
 }
 
-fn file<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Vec<Fn<'a>>)> {
+fn file<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Vec<Fn>)> {
     func.many0().parse(input)
 }
 
 /// def ident [ type_param ] param_list (: type_expr = | [=] ) block
-fn func<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Fn<'a>)> {
+fn func<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Fn)> {
     kw(DefKeyword)
         .with(maybe(string(Ident), Expect::Ident))
         .with(type_param.option())
@@ -266,7 +347,7 @@ fn func<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], 
                 .with(maybe(type_expr, Expect::TypeExpr))
                 .with(maybe(kw(Eq), Expect::Eq)),
         )
-        .with(block)
+        .with(expr)
         .map(
             |(((((def, name), type_params), params), ret_type), body)| Fn {
                 def,
@@ -283,7 +364,7 @@ fn func<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], 
 //const PARAM_LIST_RECOVERY: &[TokenKind] = &[DefKeyword, LCurly];
 fn param_list<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
-) -> Option<(&'b [TokenNode<'a>], Paren<'a, Vec<Param<'a>>>)> {
+) -> Option<(&'b [TokenNode<'a>], Paren<Vec<Param>>)> {
     paren(param.many0_sep(kw(TokenKind::Comma)), Expect::Param).parse(input)
 }
 
@@ -291,21 +372,21 @@ fn param_list<'a: 'b, 'b>(
 //const EXPR_FIRST: &[TokenKind] = &[Num, TrueKeyword, FalseKeyword, Ident, LParen];
 fn block<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
-) -> Option<(&'b [TokenNode<'a>], Brace<'a, Vec<Stmt<'a>>>)> {
+) -> Option<(&'b [TokenNode<'a>], Brace<Vec<Stmt>>)> {
     brace(stmt.many0(), Expect::Stmt)
         .with(kw(EndLine).many0())
         .map(|(x, _endline)| x)
         .parse(input)
 }
 
-fn stmt<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt<'a>)> {
+fn stmt<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt)> {
     stmt_val
         .or(stmt_return)
         .or(expr.map(Stmt::Expr))
         .parse(input)
 }
 
-fn stmt_val<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt<'a>)> {
+fn stmt_val<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt)> {
     kw(ValKeyword)
         .with(maybe(string(Ident), Expect::Ident))
         .with(maybe(kw(Eq), Expect::Eq))
@@ -321,7 +402,7 @@ fn stmt_val<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a
 }
 
 /// stmt_return ::= return expr
-fn stmt_return<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt<'a>)> {
+fn stmt_return<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt)> {
     kw(ReturnKeyword)
         .with(expr)
         .map(|x| Stmt::Return(x.0, x.1))
@@ -331,7 +412,7 @@ fn stmt_return<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode
 /// arg_list ::= ( {expr [,]} )
 pub fn arg_list<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
-) -> Option<(&'b [TokenNode<'a>], Paren<'a, Vec<Expr<'a>>>)> {
+) -> Option<(&'b [TokenNode<'a>], Paren<Vec<Expr>>)> {
     paren(expr.many0_sep(kw(Comma)), Expect::ArgList).parse(input)
 }
 
@@ -342,7 +423,7 @@ macro_rules! tester {
             data: $input,
             start_offset: 0,
             end_offset: $input.len() as u32,
-            path: std::path::Path::new(""),
+            path_id: 0,
         };
         let tokens = $crate::lex(input).unwrap();
         // 将 tokens.1 的生命周期显式绑定到 'b
@@ -368,7 +449,6 @@ def uncurry[A: U, B: U, C: U](t: (A, B), f: A -> B -> C): C = {
   f(t(0))(t(1))
 }
 ";
-    let path = std::path::PathBuf::from("./");
-    let cst = parse(text, &path);
+    let cst = parse(text, 0);
     println!("{:#?}", cst);
 }

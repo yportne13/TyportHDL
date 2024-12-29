@@ -9,6 +9,7 @@ tokio = { version = "1.17.0", features = ["full"] }
 clap = { version = "4.4.8", features = ["derive"] }
 typort-parser = { path="typort-parser" }
 typort-lsp = { path="typort-lsp" }
+typort-tyck = { path="typort-tyck" }
 typort-interpreter = { path="typort-interpreter" }
 
 [workspace]
@@ -16,4 +17,5 @@ members = [
   "typort-parser",
   "typort-lsp",
   "typort-interpreter",
+  "typort-tyck",
 ]

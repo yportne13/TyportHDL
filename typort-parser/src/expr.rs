@@ -1,34 +1,37 @@
 use crate::{
-    arg_list,
-    combinator::{AstDebug, Maybe, Parser},
+    arg_list, block,
+    combinator::{maybe, AstDebug, Maybe, Parser, ToSpan},
     kw,
     lex::TokenNode,
-    paren, string, Expect, Paren, Span, Square, TokenKind,
+    paren, string, tobox, Brace, Expect, Paren, Span, Square, Stmt, TokenKind,
 };
 use TokenKind::*;
 
 #[derive(Clone)]
-pub enum Expr<'a> {
-    Bool(Span<'a, bool>),
-    Num(Span<'a, i32>),
-    Name(Span<'a, String>),
-    Paren(Box<Paren<'a, Expr<'a>>>),
-    Binary(
-        Box<Expr<'a>>,
-        Operator<'a>,
-        Maybe<'a, Box<Expr<'a>>, Expect>,
-    ),
-    Call(Box<Expr<'a>>, Paren<'a, Vec<Expr<'a>>>),
-    Obj {
-        lhs: Box<Expr<'a>>,
-        endl: Option<Span<'a, ()>>,
-        dot: Span<'a, ()>,
-        obj: Span<'a, String>,
+pub enum Expr {
+    Bool(Span<bool>),
+    Num(Span<i32>),
+    Name(Span<String>),
+    Paren(Box<Paren<Expr>>),
+    Binary(Box<Expr>, Operator, Maybe<Box<Expr>, Expect>),
+    If {
+        kw: Span<()>,
+        cond: Maybe<Paren<Box<Expr>>, Expect>, // a block
+        then: Maybe<Box<Expr>, Expect>,        // a block
+        els: Option<(Span<()>, Maybe<Box<Expr>, Expect>)>,
     },
-    Tuple(Square<'a, Vec<Expr<'a>>>),
+    Call(Box<Expr>, Paren<Vec<Expr>>),
+    Obj {
+        lhs: Box<Expr>,
+        endl: Option<Span<()>>,
+        dot: Span<()>,
+        obj: Span<String>,
+    },
+    Tuple(Square<Vec<Expr>>),
+    Block(Brace<Vec<Stmt>>),
 }
 
-impl<'a> AstDebug for Expr<'a> {
+impl AstDebug for Expr {
     fn fmt(&self, s: &mut String, depth: usize) {
         match self {
             Expr::Bool(b) => s.push_str(&format!("{}{:?}\n", " ".repeat(depth), b)),
@@ -48,6 +51,19 @@ impl<'a> AstDebug for Expr<'a> {
                 l.fmt(s, depth + 1);
                 s.push_str(&format!("{}{}\n", " ".repeat(depth + 1), op));
                 r.fmt(s, depth + 1);
+            }
+            Expr::If {
+                kw: _,
+                cond,
+                then,
+                els,
+            } => {
+                s.push_str(&format!("{}If\n", " ".repeat(depth)));
+                cond.fmt(s, depth + 1);
+                then.fmt(s, depth + 1);
+                if let Some(x) = els {
+                    x.1.fmt(s, depth + 1);
+                }
             }
             Expr::Call(l, param_list) => {
                 s.push_str(&format!("{}Call\n", " ".repeat(depth)));
@@ -73,11 +89,15 @@ impl<'a> AstDebug for Expr<'a> {
                 s.push_str(&format!("{}Tuple\n", " ".repeat(depth)));
                 x.fmt(s, depth + 1)
             }
+            Expr::Block(b) => {
+                s.push_str(&format!("{}Block\n", " ".repeat(depth)));
+                b.fmt(s, depth + 1)
+            }
         }
     }
 }
 
-impl<'a> std::fmt::Debug for Expr<'a> {
+impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut ret = String::new();
         AstDebug::fmt(self, &mut ret, 0);
@@ -85,17 +105,74 @@ impl<'a> std::fmt::Debug for Expr<'a> {
     }
 }
 
+impl<'a> ToSpan<'a> for Expr {
+    fn to_span(&self) -> Span<()> {
+        match self {
+            Expr::Bool(span) => span.to_span(),
+            Expr::Num(span) => span.to_span(),
+            Expr::Name(span) => span.to_span(),
+            Expr::Paren(paren) => paren.to_span(),
+            Expr::Binary(expr, _, maybe) => expr.to_span() + maybe.to_span(),
+            Expr::If {
+                kw,
+                cond: _,
+                then,
+                els,
+            } => {
+                kw.to_span()
+                    + if let Some(x) = els {
+                        x.1.to_span()
+                    } else {
+                        then.to_span()
+                    }
+            }
+            Expr::Call(expr, paren) => expr.to_span() + paren.to_span(),
+            Expr::Obj {
+                lhs,
+                endl: _,
+                dot: _,
+                obj,
+            } => lhs.to_span() + obj.to_span(),
+            Expr::Tuple(square) => square.to_span(),
+            Expr::Block(brace) => brace.to_span(),
+        }
+    }
+}
+
+/*impl<'a, T: AsRef<Expr<'a>> + 'a> From<T> for Span<()> {
+    fn from(value: T) -> Self {
+        match value.as_ref() {
+            Expr::Bool(span) => span.into(),
+            Expr::Num(span) => span.into(),
+            Expr::Name(span) => span.into(),
+            Expr::Paren(paren) => paren.as_ref().into(),
+            Expr::Binary(expr, operator, maybe) => {
+                let l: Span<()> = expr.into();
+                l + maybe.into()
+            },
+            Expr::Call(expr, paren) => {
+                expr.into()// + paren.into()
+            },
+            Expr::Obj { lhs, endl, dot, obj } => {
+                lhs.into()// + obj.into()
+            },
+            Expr::Tuple(square) => square.into(),
+            Expr::Block(brace) => brace.into(),
+        }
+    }
+}*/
+
 #[derive(Clone, Debug)]
-pub enum Operator<'a> {
-    Add(Span<'a, ()>),
-    Sub(Span<'a, ()>),
-    Mul(Span<'a, ()>),
-    Div(Span<'a, ()>),
-    Op(Span<'a, String>),
+pub enum Operator {
+    Add(Span<()>),
+    Sub(Span<()>),
+    Mul(Span<()>),
+    Div(Span<()>),
+    Op(Span<String>),
     Unknown,
 }
 
-impl<'a> Operator<'a> {
+impl Operator {
     pub fn to_level(&self) -> Option<usize> {
         match self {
             Operator::Add(_) | Operator::Sub(_) => Some(0),
@@ -106,14 +183,14 @@ impl<'a> Operator<'a> {
     }
 }
 
-pub fn expr<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Expr<'a>)> {
+pub fn expr<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Expr)> {
     expr_rec(input, None)
 }
 
 fn expr_rec<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
     left: Option<usize>,
-) -> Option<(&'b [TokenNode<'a>], Expr<'a>)> {
+) -> Option<(&'b [TokenNode<'a>], Expr)> {
     let (mut input, mut lhs) = expr_call(input)?;
     while let Some(op) = op(input) {
         if right_binds_tighter(left, op.1.to_level()) {
@@ -131,7 +208,7 @@ fn expr_rec<'a: 'b, 'b>(
                             data: Expect::Expr,
                             start_offset: input.last().map(|x| x.start_offset)?,
                             end_offset: input.last().map(|x| x.start_offset)?,
-                            path: input.last().map(|x| x.path)?,
+                            path_id: input.last().map(|x| x.path_id)?,
                         }),
                     );
                 }
@@ -143,7 +220,7 @@ fn expr_rec<'a: 'b, 'b>(
     Some((input, lhs))
 }
 
-fn op<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Operator<'a>)> {
+fn op<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Operator)> {
     kw(Plus)
         .map(Operator::Add)
         .or(kw(Minus).map(Operator::Sub))
@@ -156,7 +233,7 @@ fn op<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Op
 /// expr_call = expr_call arg_list
 ///         | expr_call . ident
 ///         | expr_delimited
-fn expr_call<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Expr<'a>)> {
+fn expr_call<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Expr)> {
     let (mut input, mut lhs) = expr_delimited(input)?;
     loop {
         if let Some((i, rhs)) = arg_list(input) {
@@ -193,15 +270,24 @@ fn right_binds_tighter(left: Option<usize>, right: Option<usize>) -> bool {
     right_tightness > left_tightness
 }
 
-fn expr_delimited<'a: 'b, 'b>(
-    input: &'b [TokenNode<'a>],
-) -> Option<(&'b [TokenNode<'a>], Expr<'a>)> {
+fn expr_delimited<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Expr)> {
     kw(TrueKeyword)
         .map(|x| Expr::Bool(x.map(|_| true)))
         .or(kw(FalseKeyword).map(|x| Expr::Bool(x.map(|_| false))))
+        .or(kw(IfKeyword)
+            .with(maybe(paren(tobox(expr), Expect::Expr), Expect::LParen))
+            .with(maybe(tobox(expr), Expect::Expr))
+            .with((kw(ElseKeyword).with(maybe(tobox(expr), Expect::Expr))).option())
+            .map(|(((kw, cond), then), els)| Expr::If {
+                kw,
+                cond,
+                then,
+                els,
+            }))
         .or(string(Num).map(|x| Expr::Num(x.map(|y| y.parse().unwrap()))))
         .or(string(Ident).map(Expr::Name))
         .or(paren(expr, Expect::Expr).map(|x| Expr::Paren(Box::new(x))))
+        .or(block.map(Expr::Block))
         .parse(input)
 }
 

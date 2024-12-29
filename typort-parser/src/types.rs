@@ -1,5 +1,5 @@
 use crate::{
-    combinator::{maybe, Maybe, Parser},
+    combinator::{maybe, AstDebug, Maybe, Parser},
     kw,
     lex::TokenNode,
     paren, square, string, Expect, Paren, Span, Square,
@@ -9,26 +9,41 @@ use crate::{
 //const PARAM_LIST_RECOVERY: &[TokenKind] = &[DefKeyword, LCurly, LParen];
 
 #[derive(Clone, Debug)]
-pub struct TypeParam<'a> {
-    pub data: Square<'a, Vec<Param<'a>>>,
+pub struct TypeParam {
+    pub data: Square<Vec<Param>>,
+}
+
+impl AstDebug for TypeParam {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        self.data.fmt(s, depth)
+    }
 }
 
 pub fn type_param<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
-) -> Option<(&'b [TokenNode<'a>], TypeParam<'a>)> {
+) -> Option<(&'b [TokenNode<'a>], TypeParam)> {
     square(param.many0_sep(kw(Comma)), Expect::LSquare)
         .map(|x| TypeParam { data: x })
         .parse(input)
 }
 
 #[derive(Clone, Debug)]
-pub struct Param<'a> {
-    pub name: Span<'a, String>,
-    pub colon: Maybe<'a, Span<'a, ()>, Expect>,
-    pub ty: Maybe<'a, TypeExpr<'a>, Expect>,
+pub struct Param {
+    pub name: Span<String>,
+    pub colon: Maybe<Span<()>, Expect>,
+    pub ty: Maybe<TypeExpr, Expect>,
 }
 
-pub fn param<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Param<'a>)> {
+impl AstDebug for Param {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        s.push_str(&format!("{}Param\n", " ".repeat(depth)));
+        self.name.data.fmt(s, depth + 1);
+        //colon
+        s.push_str(&format!("{}{:?}\n", " ".repeat(depth), self.ty));
+    }
+}
+
+pub fn param<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Param)> {
     string(Ident)
         .with(maybe(kw(Colon), Expect::Colon))
         .with(maybe(type_expr, Expect::TypeExpr))
@@ -41,19 +56,19 @@ pub fn param<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'
 }
 
 #[derive(Clone, Debug)]
-pub enum TypeExpr<'a> {
-    Base(Span<'a, String>),
+pub enum TypeExpr {
+    Base(Span<String>),
     Arrow(
-        Span<'a, String>,
-        Span<'a, ()>,
-        Box<Maybe<'a, TypeExpr<'a>, Expect>>,
+        Span<String>,
+        Span<()>,
+        Box<Maybe<TypeExpr, Expect>>,
     ),
-    Tuple(Paren<'a, Vec<TypeExpr<'a>>>),
+    Tuple(Paren<Vec<TypeExpr>>),
 }
 
 pub fn type_expr<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
-) -> Option<(&'b [TokenNode<'a>], TypeExpr<'a>)> {
+) -> Option<(&'b [TokenNode<'a>], TypeExpr)> {
     let base_or_arrow = string(Ident)
         .with(kw(Arrow).with(maybe(type_expr, Expect::TypeExpr)).option())
         .map(|(base, ret)| match ret {

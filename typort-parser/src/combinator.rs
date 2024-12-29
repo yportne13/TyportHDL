@@ -1,22 +1,38 @@
-use std::{fmt::Debug, path::Path, str::pattern::Pattern};
+use std::{fmt::Debug, ops::Add, path::Path, str::pattern::Pattern};
 
-use super::lex::TokenNode;
+pub type PathId = u32;
 
 #[derive(Clone, Copy)]
-pub struct Span<'a, T> {
+pub struct Span<T> {
     pub data: T,
     pub start_offset: u32,
     pub end_offset: u32,
-    pub path: &'a Path,
+    pub path_id: PathId,
 }
 
-impl<'a, T> Span<'a, T> {
-    pub fn map<U>(self, f: impl Fn(T) -> U) -> Span<'a, U> {
+pub trait ToSpan<'a> {
+    fn to_span(&self) -> Span<()>;
+}
+
+impl<'a, T: ToSpan<'a>> ToSpan<'a> for Box<T> {
+    fn to_span(&self) -> Span<()> {
+        self.as_ref().to_span()
+    }
+}
+
+impl<'a, T: PartialEq> PartialEq for Span<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.data == other.data
+    }
+}
+
+impl<'a, T> Span<T> {
+    pub fn map<U>(self, f: impl Fn(T) -> U) -> Span<U> {
         Span {
             data: f(self.data),
             start_offset: self.start_offset,
             end_offset: self.end_offset,
-            path: self.path,
+            path_id: self.path_id,
         }
     }
     pub fn len(&self) -> u32 {
@@ -25,15 +41,86 @@ impl<'a, T> Span<'a, T> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+    pub fn contains(&self, offset: usize) -> bool {
+        offset >= self.start_offset as usize && offset < self.end_offset as usize
+    }
+    pub fn diagnostic<U: AsRef<str>>(&self, severity: Severity, msg: U) -> Diagnostic {
+        Diagnostic {
+            severity,
+            range: (self.start_offset, self.end_offset),
+            path_id: self.path_id,
+            msg: msg.as_ref().to_owned(),
+            notes: vec![],
+        }
+    }
+    pub fn error<U: AsRef<str>>(&self, msg: U) -> Diagnostic {
+        self.diagnostic(Severity::Error, msg)
+    }
+    pub fn warning<U: AsRef<str>>(&self, msg: U) -> Diagnostic {
+        self.diagnostic(Severity::Warning, msg)
+    }
+    pub fn info<U: AsRef<str>>(&self, msg: U) -> Diagnostic {
+        self.diagnostic(Severity::Info, msg)
+    }
+    pub fn note<U: AsRef<str>>(&self, msg: U) -> (PathId, u32, u32, String) {
+        (self.path_id, self.start_offset, self.end_offset, msg.as_ref().to_owned())
+    }
 }
 
-impl<'a, T: Debug> Debug for Span<'a, T> {
+impl<'a, T: Debug> Debug for Span<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "{:?} @ {},{}",
             self.data, self.start_offset, self.end_offset
         )
+    }
+}
+
+impl<'a> Add<Span<()>> for Span<()> {
+    type Output = Span<()>;
+
+    fn add(self, rhs: Span<()>) -> Self::Output {
+        Span {
+            data: (),
+            start_offset: self.start_offset,
+            end_offset: rhs.end_offset,
+            path_id: self.path_id,
+        }
+    }
+}
+
+impl<'a, T> ToSpan<'a> for Span<T> {
+    fn to_span(&self) -> Span<()> {
+        Span {
+            data: (),
+            start_offset: self.start_offset,
+            end_offset: self.end_offset,
+            path_id: self.path_id,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Severity {
+    Error,
+    Warning,
+    Info,
+}
+
+#[derive(Clone, Debug)]
+pub struct Diagnostic {
+    severity: Severity,
+    range: (u32, u32),
+    path_id: PathId,
+    msg: String,
+    notes: Vec<(PathId, u32, u32, String)>,
+}
+
+impl Diagnostic {
+    pub fn with_note(mut self, note: (PathId, u32, u32, String)) -> Diagnostic {
+        self.notes.push(note);
+        self
     }
 }
 
@@ -121,15 +208,15 @@ where
     }
 }
 
-pub type Input<'a> = Span<'a, &'a str>;
+pub type Input<'a> = Span<&'a str>;
 
 #[derive(Clone, Copy, Debug)]
-pub enum Maybe<'a, T, E> {
+pub enum Maybe<T, E> {
     Some(T),
-    Hole(Span<'a, E>),
+    Hole(Span<E>),
 }
 
-impl<'a, T: AstDebug, E> AstDebug for Maybe<'a, T, E> {
+impl<'a, T: AstDebug, E> AstDebug for Maybe<T, E> {
     fn fmt(&self, s: &mut String, depth: usize) {
         match self {
             Maybe::Some(x) => x.fmt(s, depth),
@@ -140,12 +227,63 @@ impl<'a, T: AstDebug, E> AstDebug for Maybe<'a, T, E> {
     }
 }
 
-pub fn maybe<'a: 'b, 'b, T, P, E: Copy>(
+impl<'a, T, E> Maybe<T, E> {
+    pub fn map<U, F>(self, mut f: F) -> Maybe<U, E>
+    where
+        F: FnMut(T) -> U
+    {
+        match self {
+            Maybe::Some(x) => Maybe::Some(f(x)),
+            Maybe::Hole(span) => Maybe::Hole(span),
+        }
+    }
+    pub fn and_then<U, F>(self, f: F) -> Maybe<U, E>
+    where
+        F: FnOnce(T) -> Maybe<U, E>
+    {
+        match self {
+            Maybe::Some(x) => f(x),
+            Maybe::Hole(span) => Maybe::Hole(span),
+        }
+    }
+    pub fn unwrap_or_else<F>(self, f: F) -> T
+    where
+        F: Fn(Span<E>) -> T
+    {
+        match self {
+            Maybe::Some(x) => x,
+            Maybe::Hole(span) => f(span),
+        }
+    }
+}
+
+impl<'a, T, E: Debug> Maybe<T, E> {
+    pub fn raise_err(self, err: &mut Vec<Diagnostic>) -> Self {
+        match &self {
+            Maybe::Some(_) => {},
+            Maybe::Hole(span) => {
+                err.push(span.error(format!("{:?}", span.data)));
+            },
+        }
+        self
+    }
+}
+
+impl<'a, T: ToSpan<'a>, E> ToSpan<'a> for Maybe<T, E> {
+    fn to_span(&self) -> Span<()> {
+        match self {
+            Maybe::Some(x) => x.to_span(),
+            Maybe::Hole(span) => span.to_span(),
+        }
+    }
+}
+
+pub fn maybe<'a: 'b, 'b, T, P, N: 'a + Copy, E: Copy>(
     x: P,
     err: E,
-) -> impl Parser<&'b [TokenNode<'a>], Maybe<'a, T, E>>
+) -> impl Parser<&'b [Span<N>], Maybe<T, E>>
 where
-    P: Parser<&'b [TokenNode<'a>], T>,
+    P: Parser<&'b [Span<N>], T>,
 {
     move |input| match x.parse(input) {
         Some((input, a)) => Some((input, Maybe::Some(a))),
@@ -155,7 +293,7 @@ where
     }
 }
 
-pub fn pmatch<'a, P: Pattern + Copy>(pat: P) -> impl Parser<Input<'a>, Span<'a, &'a str>> {
+pub fn pmatch<'a, P: Pattern + Copy>(pat: P) -> impl Parser<Input<'a>, Span<&'a str>> {
     move |input: Input<'a>| {
         let x = input.data.trim_start_matches(pat);
         if x.len() == input.data.len() {
@@ -166,20 +304,20 @@ pub fn pmatch<'a, P: Pattern + Copy>(pat: P) -> impl Parser<Input<'a>, Span<'a, 
                     data: x,
                     start_offset: input.start_offset + (input.data.len() - x.len()) as u32,
                     end_offset: input.end_offset,
-                    path: input.path,
+                    path_id: input.path_id,
                 },
                 Span {
                     data: &input.data[..(input.data.len() - x.len())],
                     start_offset: input.start_offset,
                     end_offset: input.start_offset + (input.data.len() - x.len()) as u32,
-                    path: input.path,
+                    path_id: input.path_id,
                 },
             ))
         }
     }
 }
 
-pub fn is<'a, P: Pattern + Copy>(pat: P) -> impl Parser<Input<'a>, Span<'a, &'a str>> {
+pub fn is<'a, P: Pattern + Copy>(pat: P) -> impl Parser<Input<'a>, Span<&'a str>> {
     move |input: Input<'a>| {
         input.data.strip_prefix(pat).map(|x| {
             (
@@ -187,13 +325,13 @@ pub fn is<'a, P: Pattern + Copy>(pat: P) -> impl Parser<Input<'a>, Span<'a, &'a 
                     data: x,
                     start_offset: input.start_offset + (input.data.len() - x.len()) as u32,
                     end_offset: input.end_offset,
-                    path: input.path,
+                    path_id: input.path_id,
                 },
                 Span {
                     data: &input.data[..(input.data.len() - x.len())],
                     start_offset: input.start_offset,
                     end_offset: input.start_offset + (input.data.len() - x.len()) as u32,
-                    path: input.path,
+                    path_id: input.path_id,
                 },
             )
         })
@@ -215,5 +353,17 @@ impl<T: AstDebug> AstDebug for Vec<T> {
         for x in self {
             x.fmt(s, depth);
         }
+    }
+}
+
+impl AstDebug for String {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        s.push_str(&format!("{}{}\n", " ".repeat(depth), self))
+    }
+}
+
+impl AstDebug for &str {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        s.push_str(&format!("{}{}\n", " ".repeat(depth), self))
     }
 }

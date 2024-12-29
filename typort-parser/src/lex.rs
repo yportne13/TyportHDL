@@ -34,9 +34,9 @@ const OP: [(&str, TokenKind); 14] = [
     ("/", Slash),
 ];
 
-pub type TokenNode<'a> = Span<'a, (&'a str, TokenKind)>;
+pub type TokenNode<'a> = Span<(&'a str, TokenKind)>;
 
-fn ident<'a>(input: Span<'a, &'a str>) -> Option<(Input<'a>, Token<'a>)> {
+fn ident<'a>(input: Span<&'a str>) -> Option<(Input<'a>, Token<'a>)> {
     pmatch(|c: char| c.is_alphabetic() || c == '_')
         .with(pmatch(|c: char| c.is_alphanumeric() || c == '_').option())
         .map(|(head, tail)| {
@@ -54,13 +54,13 @@ fn ident<'a>(input: Span<'a, &'a str>) -> Option<(Input<'a>, Token<'a>)> {
                 data: (ident, kind),
                 start_offset: head.start_offset,
                 end_offset: head.start_offset + head.len() + tail_len,
-                path: head.path,
+                path_id: head.path_id,
             }
         })
         .parse(input)
 }
 
-fn brace<'a>(input: Span<'a, &'a str>) -> Option<(Input<'a>, Token<'a>)> {
+fn brace<'a>(input: Span<&'a str>) -> Option<(Input<'a>, Token<'a>)> {
     let lparen = is('(').map(|x| x.map(|y| (y, LParen)));
     let rparen = is(')').map(|x| x.map(|y| (y, RParen)));
     let lsquare = is('[').map(|x| x.map(|y| (y, LSquare)));
@@ -76,7 +76,7 @@ fn brace<'a>(input: Span<'a, &'a str>) -> Option<(Input<'a>, Token<'a>)> {
         .parse(input)
 }
 
-fn op<'a>(input: Span<'a, &'a str>) -> Option<(Input<'a>, Token<'a>)> {
+fn op<'a>(input: Span<&'a str>) -> Option<(Input<'a>, Token<'a>)> {
     pmatch(|c: char| {
         ('!'..='\'').contains(&c)
             || ('*'..='/').contains(&c)
@@ -97,11 +97,11 @@ fn op<'a>(input: Span<'a, &'a str>) -> Option<(Input<'a>, Token<'a>)> {
     .parse(input)
 }
 
-pub fn lex<'a>(input: Span<'a, &'a str>) -> Option<(Input<'a>, Vec<Token<'a>>)> {
+pub fn lex<'a>(input: Span<&'a str>) -> Option<(Input<'a>, Vec<Token<'a>>)> {
     let num = pmatch(|c: char| c.is_ascii_digit()).map(|x| x.map(|y| (y, Num)));
     let endline = pmatch("\n").map(|x| x.map(|y| (y, EndLine)));
     let err_token = pmatch(|c: char| !c.is_ascii_whitespace()).map(|x| x.map(|y| (y, ErrToken)));
-    fn ws<'a, A, P: Parser<Span<'a, &'a str>, A>>(p: P) -> impl Parser<Span<'a, &'a str>, A> {
+    fn ws<'a, A, P: Parser<Span<&'a str>, A>>(p: P) -> impl Parser<Span<&'a str>, A> {
         let whitespace = pmatch(|c: char| c == ' ' || c == '\t' || c == '\r').option();
         //let whitespace = pmatch(|c: char| c.is_whitespace()).option();
         p.with(whitespace).map(|(a, _)| a)
@@ -138,12 +138,11 @@ let rec consume = fun strm ->
 
 let codata = produce 42
 let res = consume codata"#;
-    let path = PathBuf::from("test.txt");
     let ret = lex(Span {
         data: input,
         start_offset: 0,
         end_offset: input.len() as u32,
-        path: &path,
+        path_id: 0,
     })
     .unwrap();
     for x in ret.1 {

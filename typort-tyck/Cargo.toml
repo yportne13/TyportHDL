@@ -1,0 +1,7 @@
+[package]
+name = "typort-tyck"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+typort-parser = { path = "../typort-parser" }

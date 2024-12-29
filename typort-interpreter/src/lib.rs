@@ -1,4 +1,4 @@
-pub mod hir;
+/*pub mod hir;
 pub mod mir;
 mod built_in;
 mod ty;
@@ -93,3 +93,4 @@ fn test_vm() {
     println!("\n##### array #####\n");
     let _ = run_code_vm(ARRAY, None);
 }
+*/
