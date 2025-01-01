@@ -4,12 +4,14 @@ use super::combinator::{pmatch, Input, Parser, Span};
 
 use TokenKind::*;
 
-const KEYWORD: [(&str, TokenKind); 10] = [
+const KEYWORD: [(&str, TokenKind); 12] = [
     ("def", DefKeyword),
     ("val", ValKeyword),
     ("var", VarKeyword),
     ("if", IfKeyword),
     ("else", ElseKeyword),
+    ("match", MatchKeyword),
+    ("case", CaseKeyword),
     ("true", TrueKeyword),
     ("false", FalseKeyword),
     ("for", ForKeyword),
@@ -17,7 +19,7 @@ const KEYWORD: [(&str, TokenKind); 10] = [
     ("return", ReturnKeyword),
 ];
 
-const OP: [(&str, TokenKind); 14] = [
+const OP: [(&str, TokenKind); 16] = [
     ("(", LParen),
     (")", RParen),
     ("{", LCurly),
@@ -28,15 +30,17 @@ const OP: [(&str, TokenKind); 14] = [
     (":", Colon),
     (".", Dot),
     ("->", Arrow),
+    ("=>", DoubleArrow),
     ("+", Plus),
     ("-", Minus),
     ("*", Star),
     ("/", Slash),
+    ("@", At),
 ];
 
 pub type TokenNode<'a> = Span<(&'a str, TokenKind)>;
 
-fn ident<'a>(input: Span<&'a str>) -> Option<(Input<'a>, Token<'a>)> {
+fn ident(input: Span<&str>) -> Option<(Input<'_>, Token<'_>)> {
     pmatch(|c: char| c.is_alphabetic() || c == '_')
         .with(pmatch(|c: char| c.is_alphanumeric() || c == '_').option())
         .map(|(head, tail)| {
@@ -60,7 +64,7 @@ fn ident<'a>(input: Span<&'a str>) -> Option<(Input<'a>, Token<'a>)> {
         .parse(input)
 }
 
-fn brace<'a>(input: Span<&'a str>) -> Option<(Input<'a>, Token<'a>)> {
+fn brace(input: Span<&str>) -> Option<(Input<'_>, Token<'_>)> {
     let lparen = is('(').map(|x| x.map(|y| (y, LParen)));
     let rparen = is(')').map(|x| x.map(|y| (y, RParen)));
     let lsquare = is('[').map(|x| x.map(|y| (y, LSquare)));
@@ -76,7 +80,7 @@ fn brace<'a>(input: Span<&'a str>) -> Option<(Input<'a>, Token<'a>)> {
         .parse(input)
 }
 
-fn op<'a>(input: Span<&'a str>) -> Option<(Input<'a>, Token<'a>)> {
+fn op(input: Span<&str>) -> Option<(Input<'_>, Token<'_>)> {
     pmatch(|c: char| {
         ('!'..='\'').contains(&c)
             || ('*'..='/').contains(&c)
@@ -97,7 +101,7 @@ fn op<'a>(input: Span<&'a str>) -> Option<(Input<'a>, Token<'a>)> {
     .parse(input)
 }
 
-pub fn lex<'a>(input: Span<&'a str>) -> Option<(Input<'a>, Vec<Token<'a>>)> {
+pub fn lex(input: Span<&str>) -> Option<(Input<'_>, Vec<Token<'_>>)> {
     let num = pmatch(|c: char| c.is_ascii_digit()).map(|x| x.map(|y| (y, Num)));
     let endline = pmatch("\n").map(|x| x.map(|y| (y, EndLine)));
     let err_token = pmatch(|c: char| !c.is_ascii_whitespace()).map(|x| x.map(|y| (y, ErrToken)));
@@ -121,7 +125,6 @@ pub fn lex<'a>(input: Span<&'a str>) -> Option<(Input<'a>, Vec<Token<'a>>)> {
 
 #[test]
 fn test() {
-    use std::path::PathBuf;
     let input = r#"let id = fun x -> x
 let twice = fun f -> fun x -> f (f x)
 

@@ -29,6 +29,8 @@ pub enum TokenKind {
     ForKeyword,
     WhileKeyword,
     ReturnKeyword,
+    MatchKeyword,
+    CaseKeyword,
 
     LParen,
     RParen,
@@ -42,10 +44,12 @@ pub enum TokenKind {
     Colon,
     Dot,
     Arrow,
+    DoubleArrow,
     Plus,
     Minus,
     Star,
     Slash,
+    At,
 
     Ident,
     Num,
@@ -76,6 +80,7 @@ pub enum Expect {
     RSquare,
     LCurly,
     RCurly,
+    Case,
     TypeExpr,
     Expr,
     Stmt,
@@ -308,7 +313,7 @@ where
 use types::{param, type_expr, Param, TypeExpr, TypeParam};
 use TokenKind::*;
 
-pub fn parse<'a>(text: &'a str, path_id: PathId) -> Vec<Fn> {
+pub fn parse(text: &str, path_id: PathId) -> Vec<Fn> {
     let input = Span {
         data: text,
         start_offset: 0,

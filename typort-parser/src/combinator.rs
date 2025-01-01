@@ -1,4 +1,4 @@
-use std::{fmt::Debug, ops::Add, path::Path, str::pattern::Pattern};
+use std::{fmt::Debug, ops::Add, str::pattern::Pattern};
 
 pub type PathId = u32;
 
@@ -20,13 +20,13 @@ impl<'a, T: ToSpan<'a>> ToSpan<'a> for Box<T> {
     }
 }
 
-impl<'a, T: PartialEq> PartialEq for Span<T> {
+impl<T: PartialEq> PartialEq for Span<T> {
     fn eq(&self, other: &Self) -> bool {
         self.data == other.data
     }
 }
 
-impl<'a, T> Span<T> {
+impl<T> Span<T> {
     pub fn map<U>(self, f: impl Fn(T) -> U) -> Span<U> {
         Span {
             data: f(self.data),
@@ -67,7 +67,7 @@ impl<'a, T> Span<T> {
     }
 }
 
-impl<'a, T: Debug> Debug for Span<T> {
+impl<T: Debug> Debug for Span<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -77,7 +77,7 @@ impl<'a, T: Debug> Debug for Span<T> {
     }
 }
 
-impl<'a> Add<Span<()>> for Span<()> {
+impl Add<Span<()>> for Span<()> {
     type Output = Span<()>;
 
     fn add(self, rhs: Span<()>) -> Self::Output {
@@ -216,7 +216,7 @@ pub enum Maybe<T, E> {
     Hole(Span<E>),
 }
 
-impl<'a, T: AstDebug, E> AstDebug for Maybe<T, E> {
+impl<T: AstDebug, E> AstDebug for Maybe<T, E> {
     fn fmt(&self, s: &mut String, depth: usize) {
         match self {
             Maybe::Some(x) => x.fmt(s, depth),
@@ -227,7 +227,7 @@ impl<'a, T: AstDebug, E> AstDebug for Maybe<T, E> {
     }
 }
 
-impl<'a, T, E> Maybe<T, E> {
+impl<T, E> Maybe<T, E> {
     pub fn map<U, F>(self, mut f: F) -> Maybe<U, E>
     where
         F: FnMut(T) -> U
@@ -257,7 +257,7 @@ impl<'a, T, E> Maybe<T, E> {
     }
 }
 
-impl<'a, T, E: Debug> Maybe<T, E> {
+impl<T, E: Debug> Maybe<T, E> {
     pub fn raise_err(self, err: &mut Vec<Diagnostic>) -> Self {
         match &self {
             Maybe::Some(_) => {},

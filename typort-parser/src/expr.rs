@@ -1,9 +1,5 @@
 use crate::{
-    arg_list, block,
-    combinator::{maybe, AstDebug, Maybe, Parser, ToSpan},
-    kw,
-    lex::TokenNode,
-    paren, string, tobox, Brace, Expect, Paren, Span, Square, Stmt, TokenKind,
+    arg_list, block, brace, combinator::{maybe, AstDebug, Maybe, Parser, ToSpan}, kw, lex::TokenNode, paren, string, tobox, Brace, Expect, Paren, Span, Square, Stmt, TokenKind
 };
 use TokenKind::*;
 
@@ -19,6 +15,11 @@ pub enum Expr {
         cond: Maybe<Paren<Box<Expr>>, Expect>, // a block
         then: Maybe<Box<Expr>, Expect>,        // a block
         els: Option<(Span<()>, Maybe<Box<Expr>, Expect>)>,
+    },
+    Match {
+        kw: Span<()>,
+        expr: Maybe<Box<Expr>, Expect>,
+        arms: Brace<Vec<MatchCase>>,
     },
     Call(Box<Expr>, Paren<Vec<Expr>>),
     Obj {
@@ -65,6 +66,15 @@ impl AstDebug for Expr {
                     x.1.fmt(s, depth + 1);
                 }
             }
+            Expr::Match { kw, expr, arms } => {
+                s.push_str(&format!("{}Match\n", " ".repeat(depth)));
+                expr.fmt(s, depth + 1);
+                if let Maybe::Some(arms) = &arms.data {
+                    for arm in arms {
+                        arm.fmt(s, depth + 1);
+                    }
+                }
+            }
             Expr::Call(l, param_list) => {
                 s.push_str(&format!("{}Call\n", " ".repeat(depth)));
                 l.fmt(s, depth + 1);
@@ -92,6 +102,61 @@ impl AstDebug for Expr {
             Expr::Block(b) => {
                 s.push_str(&format!("{}Block\n", " ".repeat(depth)));
                 b.fmt(s, depth + 1)
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+struct MatchCase {
+    case: Span<()>,
+    pat: Pattern,
+    cond: Option<(Span<()>, Expr)>,
+    arrow: Span<()>,
+    expr: Expr,
+}
+
+impl AstDebug for MatchCase {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        s.push_str(&format!("{}MatchCase\n", " ".repeat(depth)));
+        s.push_str(&format!("{}. @ {}\n", " ".repeat(depth + 1), self.case.start_offset));
+        self.pat.fmt(s, depth + 1);
+        if let Some((_, cond)) = &self.cond {
+            cond.fmt(s, depth + 1);
+        }
+    }
+}
+
+#[derive(Clone)]
+enum Pattern {
+    Binding {
+        ident: Span<String>, // 绑定的变量名
+        at: Span<()>,    // `@` 符号
+        pat: Box<Pattern>, // 子模式
+    },
+    Num(Span<i128>),       // 数字模式
+    Ident(Span<String>),     // 标识符模式
+}
+
+impl AstDebug for Pattern {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        match self {
+            Pattern::Binding {
+                ident,
+                at: _,
+                pat,
+            } => {
+                s.push_str(&format!("{}Binding\n", " ".repeat(depth)));
+                s.push_str(&format!("{}{:?}\n", " ".repeat(depth + 1), ident));
+                pat.fmt(s, depth + 1);
+            }
+            Pattern::Num(n) => {
+                s.push_str(&format!("{}Num\n", " ".repeat(depth)));
+                s.push_str(&format!("{}{:?}\n", " ".repeat(depth + 1), n));
+            }
+            Pattern::Ident(ident) => {
+                s.push_str(&format!("{}Ident\n", " ".repeat(depth)));
+                s.push_str(&format!("{}{:?}\n", " ".repeat(depth + 1), ident));
             }
         }
     }
@@ -126,6 +191,11 @@ impl<'a> ToSpan<'a> for Expr {
                         then.to_span()
                     }
             }
+            Expr::Match {
+                kw,
+                expr: _,
+                arms,
+            } => kw.to_span() + arms.to_span(),
             Expr::Call(expr, paren) => expr.to_span() + paren.to_span(),
             Expr::Obj {
                 lhs,
@@ -284,11 +354,42 @@ fn expr_delimited<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenN
                 then,
                 els,
             }))
+        .or(kw(MatchKeyword).with(maybe(expr.map(Box::new), Expect::Expr)).with(brace(
+            kw(CaseKeyword)
+                .with(pattern)
+                .with((kw(IfKeyword).with(expr)).option())
+                .with(kw(DoubleArrow))
+                .with(expr)
+                .map(|((((case, pat), cond), arrow), expr)| MatchCase {
+                    case,
+                    pat,
+                    cond,
+                    arrow,
+                    expr,
+                }).many0_sep(kw(EndLine)),
+            Expect::Case,
+        )).map(|((kw, expr), arms)| Expr::Match { kw, expr, arms }))
         .or(string(Num).map(|x| Expr::Num(x.map(|y| y.parse().unwrap()))))
         .or(string(Ident).map(Expr::Name))
         .or(paren(expr, Expect::Expr).map(|x| Expr::Paren(Box::new(x))))
         .or(block.map(Expr::Block))
         .parse(input)
+}
+
+fn pattern<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Pattern)> {
+    // 解析绑定模式：`num @ xxxx`
+    (string(Ident)
+        .with(kw(At))
+        .with(pattern)
+        .map(|((ident, at), pat)| Pattern::Binding {
+            ident,
+            at,
+            pat: Box::new(pat),
+        }))
+    // 解析简单模式：数字或标识符
+    .or(string(Num).map(|x| Pattern::Num(x.map(|y| y.parse().unwrap()))))
+    .or(string(Ident).map(Pattern::Ident))
+    .parse(input)
 }
 
 #[test]
