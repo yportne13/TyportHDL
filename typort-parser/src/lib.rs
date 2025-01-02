@@ -111,13 +111,13 @@ impl AstDebug for Stmt {
                 ));
                 expr.fmt(s, depth + 1);
             },
-            Stmt::Val { val, ident, eq, expr } => {
+            Stmt::Val { val, ident, eq: _, expr } => {
                 s.push_str(&format!(
                     "{}val @ {}\n",
                     " ".repeat(depth),
                     val.start_offset
                 ));
-                //TODO:ident.fmt(s, depth + 1);
+                ident.fmt(s, depth + 1);
                 s.push_str(&format!(
                     "{}=\n",
                     " ".repeat(depth + 1),
@@ -155,7 +155,7 @@ impl AstDebug for Fn {
             " ".repeat(depth),
             self.def.start_offset,
         ));
-        //self.name.fmt(s, depth + 1);
+        self.name.fmt(s, depth + 1);
         if let Some(x) = self.type_params.as_ref() {
             x.fmt(s, depth + 1)
         }

@@ -221,7 +221,7 @@ impl<T: AstDebug, E> AstDebug for Maybe<T, E> {
         match self {
             Maybe::Some(x) => x.fmt(s, depth),
             Maybe::Hole(x) => {
-                s.push_str(&format!("{}Hole @ {}", " ".repeat(depth), x.start_offset))
+                s.push_str(&format!("{}Hole @ {}\n", " ".repeat(depth), x.start_offset))
             }
         }
     }
@@ -365,5 +365,11 @@ impl AstDebug for String {
 impl AstDebug for &str {
     fn fmt(&self, s: &mut String, depth: usize) {
         s.push_str(&format!("{}{}\n", " ".repeat(depth), self))
+    }
+}
+
+impl<T: std::fmt::Display> AstDebug for Span<T> {
+    fn fmt(&self, s: &mut String, depth: usize) {
+        s.push_str(&format!("{}{} @ {},{}\n", " ".repeat(depth), self.data, self.start_offset, self.end_offset))
     }
 }

@@ -28,6 +28,11 @@ pub enum Expr {
         dot: Span<()>,
         obj: Span<String>,
     },
+    UnnamedFunc {
+        param: Span<String>,//TODO: or tuple
+        arrow: Span<()>,
+        body: Maybe<Box<Expr>, Expect>,
+    },
     Tuple(Square<Vec<Expr>>),
     Block(Brace<Vec<Stmt>>),
 }
@@ -95,6 +100,12 @@ impl AstDebug for Expr {
                 ));
                 s.push_str(&format!("{}{:?}\n", " ".repeat(depth + 1), name))
             }
+            Expr::UnnamedFunc { param, arrow, body } => {
+                s.push_str(&format!("{}UnnamedFunc\n", " ".repeat(depth)));
+                param.fmt(s, depth + 1);
+                //TODO:arrow
+                body.fmt(s, depth + 1);
+            }
             Expr::Tuple(x) => {
                 s.push_str(&format!("{}Tuple\n", " ".repeat(depth)));
                 x.fmt(s, depth + 1)
@@ -108,7 +119,7 @@ impl AstDebug for Expr {
 }
 
 #[derive(Clone)]
-struct MatchCase {
+pub struct MatchCase {
     case: Span<()>,
     pat: Pattern,
     cond: Option<(Span<()>, Expr)>,
@@ -203,6 +214,9 @@ impl<'a> ToSpan<'a> for Expr {
                 dot: _,
                 obj,
             } => lhs.to_span() + obj.to_span(),
+            Expr::UnnamedFunc { param, arrow: _, body } => {
+                param.to_span() + body.to_span()
+            }
             Expr::Tuple(square) => square.to_span(),
             Expr::Block(brace) => brace.to_span(),
         }
@@ -370,6 +384,9 @@ fn expr_delimited<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenN
             Expect::Case,
         )).map(|((kw, expr), arms)| Expr::Match { kw, expr, arms }))
         .or(string(Num).map(|x| Expr::Num(x.map(|y| y.parse().unwrap()))))
+        .or(string(Ident).with(kw(DoubleArrow).with(maybe(tobox(expr), Expect::Expr))).map(|(ident, (arrow, body))|
+            Expr::UnnamedFunc { param: ident, arrow, body }
+        ))
         .or(string(Ident).map(Expr::Name))
         .or(paren(expr, Expect::Expr).map(|x| Expr::Paren(Box::new(x))))
         .or(block.map(Expr::Block))
