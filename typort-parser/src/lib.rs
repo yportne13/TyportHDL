@@ -89,18 +89,18 @@ pub enum Expect {
 }
 
 #[derive(Clone, Debug)]
-pub enum Stmt {
-    Return(Span<()>, Expr),
+pub enum Stmt<T> {
+    Return(Span<()>, Expr<T>),
     Val {
         val: Span<()>,
         ident: Maybe<Span<String>, Expect>,
         eq: Maybe<Span<()>, Expect>,
-        expr: Maybe<Expr, Expect>,
+        expr: Maybe<Expr<T>, Expect>,
     },
-    Expr(Expr),
+    Expr(Expr<T>),
 }
 
-impl AstDebug for Stmt {
+impl<T: std::fmt::Debug> AstDebug for Stmt<T> {
     fn fmt(&self, s: &mut String, depth: usize) {
         match self {
             Stmt::Return(span, expr) => {
@@ -136,7 +136,7 @@ impl AstDebug for Stmt {
 }
 
 #[derive(Clone, Debug)]
-pub struct Fn {
+pub struct Fn<T> {
     pub def: Span<()>,
     pub name: Maybe<Span<String>, Expect>,
     pub type_params: Option<TypeParam>,
@@ -145,10 +145,10 @@ pub struct Fn {
         (Span<()>, Maybe<TypeExpr, Expect>),
         Maybe<Span<()>, Expect>,
     ),
-    pub body: Expr,
+    pub body: Expr<T>,
 }
 
-impl AstDebug for Fn {
+impl<T: std::fmt::Debug> AstDebug for Fn<T> {
     fn fmt(&self, s: &mut String, depth: usize) {
         s.push_str(&format!(
             "{}def @ {}\n",
@@ -313,7 +313,7 @@ where
 use types::{param, type_expr, Param, TypeExpr, TypeParam};
 use TokenKind::*;
 
-pub fn parse(text: &str, path_id: PathId) -> Vec<Fn> {
+pub fn parse(text: &str, path_id: PathId) -> Vec<Fn<String>> {
     let input = Span {
         data: text,
         start_offset: 0,
@@ -337,12 +337,12 @@ pub fn parse(text: &str, path_id: PathId) -> Vec<Fn> {
     ret.1
 }
 
-fn file<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Vec<Fn>)> {
+fn file<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Vec<Fn<String>>)> {
     func.many0().parse(input)
 }
 
 /// def ident [ type_param ] param_list (: type_expr = | [=] ) block
-fn func<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Fn)> {
+fn func<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Fn<String>)> {
     kw(DefKeyword)
         .with(maybe(string(Ident), Expect::Ident))
         .with(type_param.option())
@@ -377,21 +377,21 @@ fn param_list<'a: 'b, 'b>(
 //const EXPR_FIRST: &[TokenKind] = &[Num, TrueKeyword, FalseKeyword, Ident, LParen];
 fn block<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
-) -> Option<(&'b [TokenNode<'a>], Brace<Vec<Stmt>>)> {
+) -> Option<(&'b [TokenNode<'a>], Brace<Vec<Stmt<String>>>)> {
     brace(stmt.many0(), Expect::Stmt)
         .with(kw(EndLine).many0())
         .map(|(x, _endline)| x)
         .parse(input)
 }
 
-fn stmt<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt)> {
+fn stmt<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt<String>)> {
     stmt_val
         .or(stmt_return)
         .or(expr.map(Stmt::Expr))
         .parse(input)
 }
 
-fn stmt_val<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt)> {
+fn stmt_val<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt<String>)> {
     kw(ValKeyword)
         .with(maybe(string(Ident), Expect::Ident))
         .with(maybe(kw(Eq), Expect::Eq))
@@ -407,7 +407,7 @@ fn stmt_val<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a
 }
 
 /// stmt_return ::= return expr
-fn stmt_return<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt)> {
+fn stmt_return<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Stmt<String>)> {
     kw(ReturnKeyword)
         .with(expr)
         .map(|x| Stmt::Return(x.0, x.1))
@@ -417,7 +417,7 @@ fn stmt_return<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode
 /// arg_list ::= ( {expr [,]} )
 pub fn arg_list<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
-) -> Option<(&'b [TokenNode<'a>], Paren<Vec<Expr>>)> {
+) -> Option<(&'b [TokenNode<'a>], Paren<Vec<Expr<String>>>)> {
     paren(expr.many0_sep(kw(Comma)), Expect::ArgList).parse(input)
 }
 

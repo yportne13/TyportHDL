@@ -4,26 +4,26 @@ use crate::{
 use TokenKind::*;
 
 #[derive(Clone)]
-pub enum Expr {
+pub enum Expr<T> {
     Bool(Span<bool>),
     Num(Span<i32>),
-    Name(Span<String>),
-    Paren(Box<Paren<Expr>>),
-    Binary(Box<Expr>, Operator, Maybe<Box<Expr>, Expect>),
+    Name(Span<T>),
+    Paren(Box<Paren<Expr<T>>>),
+    Binary(Box<Expr<T>>, Operator, Maybe<Box<Expr<T>>, Expect>),
     If {
         kw: Span<()>,
-        cond: Maybe<Paren<Box<Expr>>, Expect>, // a block
-        then: Maybe<Box<Expr>, Expect>,        // a block
-        els: Option<(Span<()>, Maybe<Box<Expr>, Expect>)>,
+        cond: Maybe<Paren<Box<Expr<T>>>, Expect>, // a block
+        then: Maybe<Box<Expr<T>>, Expect>,        // a block
+        els: Option<(Span<()>, Maybe<Box<Expr<T>>, Expect>)>,
     },
     Match {
         kw: Span<()>,
-        expr: Maybe<Box<Expr>, Expect>,
-        arms: Brace<Vec<MatchCase>>,
+        expr: Maybe<Box<Expr<T>>, Expect>,
+        arms: Brace<Vec<MatchCase<T>>>,
     },
-    Call(Box<Expr>, Paren<Vec<Expr>>),
+    Call(Box<Expr<T>>, Paren<Vec<Expr<T>>>),
     Obj {
-        lhs: Box<Expr>,
+        lhs: Box<Expr<T>>,
         endl: Option<Span<()>>,
         dot: Span<()>,
         obj: Span<String>,
@@ -31,13 +31,13 @@ pub enum Expr {
     UnnamedFunc {
         param: Span<String>,//TODO: or tuple
         arrow: Span<()>,
-        body: Maybe<Box<Expr>, Expect>,
+        body: Maybe<Box<Expr<T>>, Expect>,
     },
-    Tuple(Square<Vec<Expr>>),
-    Block(Brace<Vec<Stmt>>),
+    Tuple(Square<Vec<Expr<T>>>),
+    Block(Brace<Vec<Stmt<T>>>),
 }
 
-impl AstDebug for Expr {
+impl<T: std::fmt::Debug> AstDebug for Expr<T> {
     fn fmt(&self, s: &mut String, depth: usize) {
         match self {
             Expr::Bool(b) => s.push_str(&format!("{}{:?}\n", " ".repeat(depth), b)),
@@ -119,15 +119,15 @@ impl AstDebug for Expr {
 }
 
 #[derive(Clone)]
-pub struct MatchCase {
+pub struct MatchCase<T> {
     case: Span<()>,
     pat: Pattern,
-    cond: Option<(Span<()>, Expr)>,
+    cond: Option<(Span<()>, Expr<T>)>,
     arrow: Span<()>,
-    expr: Expr,
+    expr: Expr<T>,
 }
 
-impl AstDebug for MatchCase {
+impl<T: std::fmt::Debug> AstDebug for MatchCase<T> {
     fn fmt(&self, s: &mut String, depth: usize) {
         s.push_str(&format!("{}MatchCase\n", " ".repeat(depth)));
         s.push_str(&format!("{}. @ {}\n", " ".repeat(depth + 1), self.case.start_offset));
@@ -173,7 +173,7 @@ impl AstDebug for Pattern {
     }
 }
 
-impl std::fmt::Debug for Expr {
+impl<T: std::fmt::Debug> std::fmt::Debug for Expr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut ret = String::new();
         AstDebug::fmt(self, &mut ret, 0);
@@ -181,7 +181,7 @@ impl std::fmt::Debug for Expr {
     }
 }
 
-impl<'a> ToSpan<'a> for Expr {
+impl<'a, T> ToSpan<'a> for Expr<T> {
     fn to_span(&self) -> Span<()> {
         match self {
             Expr::Bool(span) => span.to_span(),
@@ -267,14 +267,14 @@ impl Operator {
     }
 }
 
-pub fn expr<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Expr)> {
+pub fn expr<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Expr<String>)> {
     expr_rec(input, None)
 }
 
 fn expr_rec<'a: 'b, 'b>(
     input: &'b [TokenNode<'a>],
     left: Option<usize>,
-) -> Option<(&'b [TokenNode<'a>], Expr)> {
+) -> Option<(&'b [TokenNode<'a>], Expr<String>)> {
     let (mut input, mut lhs) = expr_call(input)?;
     while let Some(op) = op(input) {
         if right_binds_tighter(left, op.1.to_level()) {
@@ -317,7 +317,7 @@ fn op<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Op
 /// expr_call = expr_call arg_list
 ///         | expr_call . ident
 ///         | expr_delimited
-fn expr_call<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Expr)> {
+fn expr_call<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Expr<String>)> {
     let (mut input, mut lhs) = expr_delimited(input)?;
     loop {
         if let Some((i, rhs)) = arg_list(input) {
@@ -354,7 +354,7 @@ fn right_binds_tighter(left: Option<usize>, right: Option<usize>) -> bool {
     right_tightness > left_tightness
 }
 
-fn expr_delimited<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Expr)> {
+fn expr_delimited<'a: 'b, 'b>(input: &'b [TokenNode<'a>]) -> Option<(&'b [TokenNode<'a>], Expr<String>)> {
     kw(TrueKeyword)
         .map(|x| Expr::Bool(x.map(|_| true)))
         .or(kw(FalseKeyword).map(|x| Expr::Bool(x.map(|_| false))))
